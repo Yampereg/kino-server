@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://34.165.78.84:5432/kino
+    username: kinoadmin
+    password: ki124
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: public
+server:
+  address: 0.0.0.0
+  port: 8080
+jwt:
+  secret: your_super_secret_key_here
+  expiration-ms: 86400000 # 1 day in milliseconds
