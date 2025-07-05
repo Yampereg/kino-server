@@ -5,22 +5,23 @@ import lombok.*;
 
 @Entity
 @Table(name = "users", schema = "public")
-@Getter
-@Setter
+@Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class User {
+
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "users_id_seq")
+    @SequenceGenerator(name = "users_id_seq", sequenceName = "users_id_seq", allocationSize = 1)
     private Integer id;
 
-    @Column(nullable = false, unique = true)
+    @Column(length = 100, unique = true)
     private String email;
 
     @Column(length = 20)
     private String name;
 
-    @Column(name = "passwordhash", nullable = false)
+    @Column(name = "passwordhash", length = 255)
     private String passwordHash;
 }

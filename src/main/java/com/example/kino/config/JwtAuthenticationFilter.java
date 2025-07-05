@@ -1,7 +1,7 @@
 package com.example.kino.config;
 
 import com.example.kino.auth.JwtService;
-import com.example.kino.user.*;
+import com.example.kino.user.User;
 import com.example.kino.user.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -30,23 +30,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
+        System.out.println("JwtAuthenticationFilter: Filtering request - " + request.getRequestURI());
 
         final String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
-        final String jwt;
-        final String userEmail;
-
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            System.out.println("JwtAuthenticationFilter: No Bearer token found in header");
             filterChain.doFilter(request, response);
             return;
         }
 
-        jwt = authHeader.substring(7);
+        final String jwt = authHeader.substring(7);
         if (!jwtService.validateToken(jwt)) {
+            System.out.println("JwtAuthenticationFilter: Invalid JWT token");
             filterChain.doFilter(request, response);
             return;
         }
 
-        userEmail = jwtService.extractEmail(jwt);
+        String userEmail = jwtService.extractEmail(jwt);
+        System.out.println("JwtAuthenticationFilter: Extracted email from token: " + userEmail);
+
         Optional<User> userOpt = userRepository.findByEmail(userEmail);
 
         if (userOpt.isPresent() && SecurityContextHolder.getContext().getAuthentication() == null) {
@@ -64,6 +66,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
             SecurityContextHolder.getContext().setAuthentication(authToken);
+            System.out.println("JwtAuthenticationFilter: Authentication set for user: " + user.getEmail());
+        } else if (userOpt.isEmpty()) {
+            System.out.println("JwtAuthenticationFilter: No user found with email: " + userEmail);
+        } else {
+            System.out.println("JwtAuthenticationFilter: Authentication already present in context");
         }
 
         filterChain.doFilter(request, response);
