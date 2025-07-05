@@ -28,21 +28,31 @@ public class FilmService {
 
         List<Film> candidateFilms = filmRepository.findUnseenFilms(user);
 
+        System.out.print("Got candidates");
+
         Set<Integer> preferredGenreIds = genrePrefRepo.findByUser(user).stream()
                 .map(p -> p.getGenre().getId())
                 .collect(Collectors.toSet());
 
+        System.out.print("Got preferredGenreIds");
+
+
         Set<Integer> preferredTagIds = tagPrefRepo.findByUser(user).stream()
                 .map(p -> p.getTag().getId())
                 .collect(Collectors.toSet());
+        System.out.print("Got preferredTagIds");
 
         Set<Integer> preferredActorIds = actorPrefRepo.findByUser(user).stream()
                 .map(p -> p.getActor().getId())
                 .collect(Collectors.toSet());
 
+        System.out.print("Got preferredActorIds");
+
         Set<Integer> preferredDirectorIds = directorPrefRepo.findByUser(user).stream()
                 .map(p -> p.getDirector().getId())
                 .collect(Collectors.toSet());
+
+        System.out.print("got preferredDirectorIds");
 
         List<Film> filteredFilms = candidateFilms.stream()
                 .filter(film ->
@@ -53,6 +63,8 @@ public class FilmService {
                 )
                 .limit(1000)
                 .collect(Collectors.toList());
+
+        System.out.print("got filteredFilms");
 
         Map<Integer, Double> genrePrefs = genrePrefRepo.findByUser(user).stream()
                 .collect(Collectors.toMap(p -> p.getGenre().getId(), p -> p.getAffinityscore()));
@@ -66,6 +78,8 @@ public class FilmService {
         Map<Integer, Double> directorPrefs = directorPrefRepo.findByUser(user).stream()
                 .collect(Collectors.toMap(p -> p.getDirector().getId(), p -> p.getAffinityscore()));
 
+
+        System.out.print("got 4 maps");
         // Map film id -> film (fully initialized)
         Map<Integer, Film> idToFilm = new HashMap<>();
         List<FilmWithMetadata> metadataList = filteredFilms.stream()
@@ -80,6 +94,8 @@ public class FilmService {
                     );
                 })
                 .collect(Collectors.toList());
+
+        System.err.println("hereeeeeee");
 
         return metadataList.parallelStream()
                 .map(meta -> Map.entry(
