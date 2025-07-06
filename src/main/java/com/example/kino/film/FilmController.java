@@ -46,4 +46,11 @@ public class FilmController {
         List<Film> recommendations = filmService.getRecommendations(user);
         return ResponseEntity.ok(recommendations);
     }
+
+    @GetMapping("/next")
+    public ResponseEntity<List<Film>> getNextToSwipe(@RequestHeader("Authorization") String authHeader) {
+        User user = extractUserFromToken(authHeader);
+        List<Film> nextFilms = filmService.getNextToSwipe(user);
+        return ResponseEntity.ok(nextFilms);
+    }
 }

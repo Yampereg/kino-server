@@ -37,8 +37,6 @@ public class FilmService {
         Map<Integer, Double> directorPrefs = directorPrefRepo.findByUser(user).stream()
                 .collect(Collectors.toMap(p -> p.getDirector().getId(), p -> p.getAffinityscore()));
 
-
-        System.out.println("yeah");
         int page = 0;
         int size = 500;
         List<Map.Entry<Film, Double>> topRecommendations = new ArrayList<>();
@@ -84,6 +82,23 @@ public class FilmService {
 
         return topRecommendations.stream()
                 .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+    }
+
+    public List<Film> getNextToSwipe(User user) {
+        Set<Integer> preferredGenreIds = genrePrefRepo.findByUser(user).stream()
+                .map(p -> p.getGenre().getId())
+                .collect(Collectors.toSet());
+
+        List<Film> candidateFilms = filmRepository.findTopUnseenByUser(user, PageRequest.of(0, 100));
+
+        return candidateFilms.stream()
+                .sorted((f1, f2) -> {
+                    long f1Score = f1.getGenres().stream().filter(g -> preferredGenreIds.contains(g.getId())).count();
+                    long f2Score = f2.getGenres().stream().filter(g -> preferredGenreIds.contains(g.getId())).count();
+                    return Long.compare(f2Score, f1Score); // sort descending
+                })
+                .limit(3)
                 .collect(Collectors.toList());
     }
 }

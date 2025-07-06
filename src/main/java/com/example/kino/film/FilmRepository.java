@@ -19,4 +19,7 @@ public interface FilmRepository extends JpaRepository<Film, Integer> {
     @Query("SELECT f FROM Film f WHERE f.id NOT IN (SELECT i.film.id FROM com.example.kino.userinteraction.UserFilmInteraction i WHERE i.user = :user)")
     Page<Film> findUnseenFilmsPage(@Param("user") User user, org.springframework.data.domain.Pageable pageable);
 
+    @Query("SELECT f FROM Film f WHERE f.id NOT IN (SELECT i.film.id FROM com.example.kino.userinteraction.UserFilmInteraction i WHERE i.user = :user) ORDER BY f.popularity DESC")
+    List<Film> findTopUnseenByUser(@Param("user") User user, org.springframework.data.domain.Pageable pageable);
+
 }
