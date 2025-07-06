@@ -13,25 +13,29 @@ public class FilmRelationsFetcher {
     private EntityManager entityManager;
 
     public Map<Integer, Set<Integer>> fetchFilmGenres(Set<Integer> filmIds) {
-        return fetchRelation("SELECT filmid, genreid FROM public.filmgenres WHERE filmid = ANY (?1)", filmIds);
+        String sql = "SELECT filmid, genreid FROM public.filmgenres WHERE filmid IN (:filmIds)";
+        return fetchRelation(sql, filmIds);
     }
 
     public Map<Integer, Set<Integer>> fetchFilmTags(Set<Integer> filmIds) {
-        return fetchRelation("SELECT filmid, tagid FROM public.filmtags WHERE filmid = ANY (?1)", filmIds);
+        String sql = "SELECT filmid, tagid FROM public.filmtags WHERE filmid IN (:filmIds)";
+        return fetchRelation(sql, filmIds);
     }
 
     public Map<Integer, Set<Integer>> fetchFilmActors(Set<Integer> filmIds) {
-        return fetchRelation("SELECT filmid, actorid FROM public.filmactors WHERE filmid = ANY (?1)", filmIds);
+        String sql = "SELECT filmid, actorid FROM public.filmactors WHERE filmid IN (:filmIds)";
+        return fetchRelation(sql, filmIds);
     }
 
     public Map<Integer, Set<Integer>> fetchFilmDirectors(Set<Integer> filmIds) {
-        return fetchRelation("SELECT filmid, directorid FROM public.filmdirectors WHERE filmid = ANY (?1)", filmIds);
+        String sql = "SELECT filmid, directorid FROM public.filmdirectors WHERE filmid IN (:filmIds)";
+        return fetchRelation(sql, filmIds);
     }
 
     private Map<Integer, Set<Integer>> fetchRelation(String sql, Set<Integer> filmIds) {
         if (filmIds.isEmpty()) return Collections.emptyMap();
         List<Object[]> results = entityManager.createNativeQuery(sql)
-                .setParameter(1, filmIds.toArray())
+                .setParameter("filmIds", filmIds)
                 .getResultList();
 
         Map<Integer, Set<Integer>> map = new HashMap<>();
