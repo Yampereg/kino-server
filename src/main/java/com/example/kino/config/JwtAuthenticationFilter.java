@@ -67,12 +67,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             SecurityContextHolder.getContext().setAuthentication(authToken);
             System.out.println("JwtAuthenticationFilter: Authentication set for user: " + user.getEmail());
-        } else if (userOpt.isEmpty()) {
-            System.out.println("JwtAuthenticationFilter: No user found with email: " + userEmail);
-        } else {
-            System.out.println("JwtAuthenticationFilter: Authentication already present in context");
-        }
-
+        } 
         filterChain.doFilter(request, response);
     }
 }

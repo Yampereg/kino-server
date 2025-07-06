@@ -25,8 +25,7 @@ public class FilmService {
 
     public List<Film> getRecommendations(User user) {
         System.out.println("Start recommendations");
-
-        List<Film> candidateFilms = filmRepository.findUnseenFilms(user);
+        List<Film> candidateFilms = filmRepository.findUnseenFilmsWithMetadata(user);
 
         System.out.print("Got candidates");
 
