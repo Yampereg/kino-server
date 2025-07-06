@@ -18,3 +18,9 @@ server:
 jwt:
   secret: ${JWT_SECRET}
   expiration-ms: ${JWT_EXPIRATION_MS}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
