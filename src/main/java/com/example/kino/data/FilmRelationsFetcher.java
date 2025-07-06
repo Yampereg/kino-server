@@ -13,19 +13,19 @@ public class FilmRelationsFetcher {
     private EntityManager entityManager;
 
     public Map<Integer, Set<Integer>> fetchFilmGenres(Set<Integer> filmIds) {
-        return fetchRelation("SELECT filmid, genreid FROM filmgenres WHERE filmid = ANY (?1)", filmIds);
+        return fetchRelation("SELECT filmid, genreid FROM public.filmgenres WHERE filmid = ANY (?1)", filmIds);
     }
 
     public Map<Integer, Set<Integer>> fetchFilmTags(Set<Integer> filmIds) {
-        return fetchRelation("SELECT filmid, tagid FROM filmtags WHERE filmid = ANY (?1)", filmIds);
+        return fetchRelation("SELECT filmid, tagid FROM public.filmtags WHERE filmid = ANY (?1)", filmIds);
     }
 
     public Map<Integer, Set<Integer>> fetchFilmActors(Set<Integer> filmIds) {
-        return fetchRelation("SELECT filmid, actorid FROM filmactors WHERE filmid = ANY (?1)", filmIds);
+        return fetchRelation("SELECT filmid, actorid FROM public.filmactors WHERE filmid = ANY (?1)", filmIds);
     }
 
     public Map<Integer, Set<Integer>> fetchFilmDirectors(Set<Integer> filmIds) {
-        return fetchRelation("SELECT filmid, directorid FROM filmdirectors WHERE filmid = ANY (?1)", filmIds);
+        return fetchRelation("SELECT filmid, directorid FROM public.filmdirectors WHERE filmid = ANY (?1)", filmIds);
     }
 
     private Map<Integer, Set<Integer>> fetchRelation(String sql, Set<Integer> filmIds) {
