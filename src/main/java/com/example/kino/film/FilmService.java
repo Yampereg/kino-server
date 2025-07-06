@@ -98,7 +98,7 @@ public class FilmService {
                     long f2Score = f2.getGenres().stream().filter(g -> preferredGenreIds.contains(g.getId())).count();
                     return Long.compare(f2Score, f1Score); // sort descending
                 })
-                .limit(3)
+                .limit(5)
                 .collect(Collectors.toList());
     }
 }
