@@ -1,5 +1,3 @@
-// File: D:\kino-server\src\main\java\com\example\kino\film\FilmService.java
-
 package com.example.kino.film;
 
 import com.example.kino.actor.ActorPreferenceRepository;
@@ -7,6 +5,9 @@ import com.example.kino.director.DirectorPreferenceRepository;
 import com.example.kino.genre.GenrePreferenceRepository;
 import com.example.kino.tag.TagPreferenceRepository;
 import com.example.kino.user.User;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.TypedQuery;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -23,48 +24,59 @@ public class FilmService {
     private final ActorPreferenceRepository actorPrefRepo;
     private final DirectorPreferenceRepository directorPrefRepo;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     public List<Film> getRecommendations(User user) {
         System.out.println("Start recommendations");
-        List<Film> candidateFilms = filmRepository.findUnseenFilmsWithMetadata(user);
 
-        System.out.print("Got candidates");
+        List<Film> candidateFilms = filmRepository.findUnseenFilms(user);
+        System.out.println("Got " + candidateFilms.size() + " candidate films");
 
+        if (candidateFilms.isEmpty()) return List.of();
+
+        Map<Integer, Film> idToFilm = candidateFilms.stream()
+                .collect(Collectors.toMap(Film::getId, f -> f));
+
+        List<Integer> filmIds = new ArrayList<>(idToFilm.keySet());
+
+        // Fetch genres, tags, actors, directors in batch
+        Map<Integer, Set<Integer>> filmGenres = fetchIdMap("SELECT fg.film.id, fg.genre.id FROM FilmGenre fg WHERE fg.film.id IN :filmIds", filmIds);
+        Map<Integer, Set<Integer>> filmTags = fetchIdMap("SELECT ft.film.id, ft.tag.id FROM FilmTag ft WHERE ft.film.id IN :filmIds", filmIds);
+        Map<Integer, Set<Integer>> filmActors = fetchIdMap("SELECT fa.film.id, fa.actor.id FROM FilmActor fa WHERE fa.film.id IN :filmIds", filmIds);
+        Map<Integer, Set<Integer>> filmDirectors = fetchIdMap("SELECT fd.film.id, fd.director.id FROM FilmDirector fd WHERE fd.film.id IN :filmIds", filmIds);
+
+        // Load user preferences
         Set<Integer> preferredGenreIds = genrePrefRepo.findByUser(user).stream()
                 .map(p -> p.getGenre().getId())
                 .collect(Collectors.toSet());
 
-        System.out.print("Got preferredGenreIds");
-
-
         Set<Integer> preferredTagIds = tagPrefRepo.findByUser(user).stream()
                 .map(p -> p.getTag().getId())
                 .collect(Collectors.toSet());
-        System.out.print("Got preferredTagIds");
 
         Set<Integer> preferredActorIds = actorPrefRepo.findByUser(user).stream()
                 .map(p -> p.getActor().getId())
                 .collect(Collectors.toSet());
 
-        System.out.print("Got preferredActorIds");
-
         Set<Integer> preferredDirectorIds = directorPrefRepo.findByUser(user).stream()
                 .map(p -> p.getDirector().getId())
                 .collect(Collectors.toSet());
 
-        System.out.print("got preferredDirectorIds");
-
-        List<Film> filteredFilms = candidateFilms.stream()
-                .filter(film ->
-                        film.getGenres().stream().anyMatch(g -> preferredGenreIds.contains(g.getId())) ||
-                        film.getTags().stream().anyMatch(t -> preferredTagIds.contains(t.getId())) ||
-                        film.getActors().stream().anyMatch(a -> preferredActorIds.contains(a.getId())) ||
-                        film.getDirectors().stream().anyMatch(d -> preferredDirectorIds.contains(d.getId()))
+        // Filter films
+        List<Integer> filteredFilmIds = filmIds.stream()
+                .filter(id ->
+                        intersects(filmGenres.get(id), preferredGenreIds)
+                        || intersects(filmTags.get(id), preferredTagIds)
+                        || intersects(filmActors.get(id), preferredActorIds)
+                        || intersects(filmDirectors.get(id), preferredDirectorIds)
                 )
                 .limit(1000)
                 .collect(Collectors.toList());
 
-        System.out.print("got filteredFilms");
+        System.out.println("Filtered down to " + filteredFilmIds.size() + " films");
 
+        // Preference scores
         Map<Integer, Double> genrePrefs = genrePrefRepo.findByUser(user).stream()
                 .collect(Collectors.toMap(p -> p.getGenre().getId(), p -> p.getAffinityscore()));
 
@@ -77,24 +89,16 @@ public class FilmService {
         Map<Integer, Double> directorPrefs = directorPrefRepo.findByUser(user).stream()
                 .collect(Collectors.toMap(p -> p.getDirector().getId(), p -> p.getAffinityscore()));
 
-
-        System.out.print("got 4 maps");
-        // Map film id -> film (fully initialized)
-        Map<Integer, Film> idToFilm = new HashMap<>();
-        List<FilmWithMetadata> metadataList = filteredFilms.stream()
-                .map(film -> {
-                    idToFilm.put(film.getId(), film);
-                    return new FilmWithMetadata(
-                            film.getId(),
-                            film.getGenres().stream().map(g -> g.getId()).collect(Collectors.toSet()),
-                            film.getTags().stream().map(t -> t.getId()).collect(Collectors.toSet()),
-                            film.getActors().stream().map(a -> a.getId()).collect(Collectors.toSet()),
-                            film.getDirectors().stream().map(d -> d.getId()).collect(Collectors.toSet())
-                    );
-                })
+        // Metadata per film
+        List<FilmWithMetadata> metadataList = filteredFilmIds.stream()
+                .map(id -> new FilmWithMetadata(
+                        id,
+                        filmGenres.getOrDefault(id, Set.of()),
+                        filmTags.getOrDefault(id, Set.of()),
+                        filmActors.getOrDefault(id, Set.of()),
+                        filmDirectors.getOrDefault(id, Set.of())
+                ))
                 .collect(Collectors.toList());
-
-        System.err.println("hereeeeeee");
 
         return metadataList.parallelStream()
                 .map(meta -> Map.entry(
@@ -106,6 +110,25 @@ public class FilmService {
                 .map(entry -> idToFilm.get(entry.getKey()))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
+    }
+
+    private Map<Integer, Set<Integer>> fetchIdMap(String queryStr, List<Integer> filmIds) {
+        TypedQuery<Object[]> query = entityManager.createQuery(queryStr, Object[].class);
+        query.setParameter("filmIds", filmIds);
+        List<Object[]> rows = query.getResultList();
+        Map<Integer, Set<Integer>> map = new HashMap<>();
+        for (Object[] row : rows) {
+            Integer filmId = (Integer) row[0];
+            Integer relatedId = (Integer) row[1];
+            map.computeIfAbsent(filmId, k -> new HashSet<>()).add(relatedId);
+        }
+        return map;
+    }
+
+    private boolean intersects(Set<Integer> a, Set<Integer> b) {
+        if (a == null || b == null) return false;
+        for (Integer x : a) if (b.contains(x)) return true;
+        return false;
     }
 
     private double computeScore(

@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:postgresql://34.165.78.84:5432/kino
-    username: kinoadmin
-    password: ki124
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -16,5 +16,5 @@ server:
   port: 8080
 
 jwt:
-  secret: your_super_secret_key_here
-  expiration-ms: 86400000  # 1 day in milliseconds
+  secret: ${JWT_SECRET}
+  expiration-ms: ${JWT_EXPIRATION_MS}

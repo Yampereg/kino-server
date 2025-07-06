@@ -1,8 +1,6 @@
 package com.example.kino.film;
 
 import com.example.kino.user.User;
-
-import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,8 +11,6 @@ import java.util.List;
 @Repository
 public interface FilmRepository extends JpaRepository<Film, Integer> {
 
-@EntityGraph(attributePaths = {"genres", "tags", "actors", "directors"})
-@Query("SELECT f FROM Film f WHERE f.id NOT IN (SELECT i.film.id FROM com.example.kino.userinteraction.UserFilmInteraction i WHERE i.user = :user)")
-List<Film> findUnseenFilmsWithMetadata(@Param("user") User user);
-
+    @Query("SELECT f FROM Film f WHERE f.id NOT IN (SELECT i.film.id FROM com.example.kino.userinteraction.UserFilmInteraction i WHERE i.user = :user)")
+    List<Film> findUnseenFilms(@Param("user") User user);
 }
