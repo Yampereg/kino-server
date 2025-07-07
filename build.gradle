@@ -32,6 +32,7 @@ dependencies {
 
     // Testing
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    implementation 'org.springframework:spring-context'
 }
 
 tasks.withType(JavaCompile) {
