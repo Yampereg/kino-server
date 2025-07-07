@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @SpringBootApplication
 @EnableJpaRepositories(basePackages = "com.example.kino")
 @EntityScan(basePackages = "com.example.kino")
+@EnableAsync
 public class KinoApplication {
 
     public static void main(String[] args) {
