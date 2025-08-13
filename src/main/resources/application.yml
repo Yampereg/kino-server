@@ -14,6 +14,5 @@ spring:
     init:
       mode: always
 
-# Optional: server port (change if needed)
 server:
   port: 8080
