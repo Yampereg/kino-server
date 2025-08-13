@@ -18,3 +18,4 @@ server:
 jwt:
   secret: your_super_secret_key_here
   expiration-ms: 86400000  # 1 day in milliseconds
+
