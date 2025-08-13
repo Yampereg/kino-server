@@ -4,8 +4,6 @@ spring:
     username: postgres
     password: cpnMnYwuAmMYtjWyOpQqsIndvGtzSFDk
   jpa:
-    hibernate:
-      ddl-auto: update
     show-sql: true
     properties:
       hibernate:
