@@ -26,7 +26,9 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody AuthRequest request) {
         try {
+            System.out.println(request.toString());
             AuthResponse response = authService.login(request);
+            System.out.println("hereeee");
             return ResponseEntity.ok(response);
         } catch (IllegalStateException e) {
             return ResponseEntity.status(401).body(new AuthResponse(e.getMessage()));
