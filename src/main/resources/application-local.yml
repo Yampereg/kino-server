@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:postgresql://34.165.78.84:5432/kino
-    username: kinoadmin
-    password: ki124
+    url: ${DATABASE_URL}
+    username: ${PGUSER}
+    password: ${PGPASSWORD}
   jpa:
     hibernate:
       ddl-auto: validate
