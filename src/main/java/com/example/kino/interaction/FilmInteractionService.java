@@ -18,8 +18,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Comparator;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -32,52 +32,47 @@ public class FilmInteractionService {
     private final ActorPreferenceRepository actorPrefRepo;
     private final DirectorPreferenceRepository directorPrefRepo;
 
-    // per-user locks to avoid deadlocks
-    private final Map<Integer, Object> userLocks = new ConcurrentHashMap<>();
-
     @Transactional
     public void likeFilm(User user, Integer filmId) {
-        processFilmWithLock(user, filmId, 1, true);
+        processFilm(user, filmId, 1, true);
     }
 
     @Transactional
     public void dislikeFilm(User user, Integer filmId) {
-        processFilmWithLock(user, filmId, -1, false);
+        processFilm(user, filmId, -1, false);
     }
 
     @Transactional
     public void superlikeFilm(User user, Integer filmId) {
-        processFilmWithLock(user, filmId, 2, true);
-    }
-
-    private void processFilmWithLock(User user, Integer filmId, int affinityChange, boolean positiveInteraction) {
-        Object lock = userLocks.computeIfAbsent(user.getId(), k -> new Object());
-        synchronized (lock) {
-            processFilm(user, filmId, affinityChange, positiveInteraction);
-        }
+        processFilm(user, filmId, 2, true);
     }
 
     private void processFilm(User user, Integer filmId, int affinityChange, boolean positiveInteraction) {
         Film film = filmRepository.findById(filmId)
-                .orElseThrow(() -> new RuntimeException("Film not found"));
+                .orElseThrow(() -> new RuntimeException("Film not found: " + filmId));
 
+        // Record the interaction first (idempotency depends on a unique constraint in this table if desired)
         interactionRepository.save(new UserFilmInteraction(user, film, positiveInteraction));
 
-        // tags
-        for (Tag tag : film.getTags()) {
-            tagPrefRepo.increment(user, tag.getId(), affinityChange);
+        // Update preferences in a deterministic order (by id) to avoid lock-order inversions
+        List<Tag> tags = film.getTags().stream().sorted(Comparator.comparing(Tag::getId)).toList();
+        for (Tag tag : tags) {
+            tagPrefRepo.upsertIncrement(user.getId(), tag.getId(), affinityChange);
         }
-        // genres
-        for (Genre genre : film.getGenres()) {
-            genrePrefRepo.increment(user, genre.getId(), affinityChange);
+
+        List<Genre> genres = film.getGenres().stream().sorted(Comparator.comparing(Genre::getId)).toList();
+        for (Genre genre : genres) {
+            genrePrefRepo.upsertIncrement(user.getId(), genre.getId(), affinityChange);
         }
-        // actors
-        for (Actor actor : film.getActors()) {
-            actorPrefRepo.increment(user, actor.getId(), affinityChange);
+
+        List<Actor> actors = film.getActors().stream().sorted(Comparator.comparing(Actor::getId)).toList();
+        for (Actor actor : actors) {
+            actorPrefRepo.upsertIncrement(user.getId(), actor.getId(), affinityChange);
         }
-        // directors
-        for (Director director : film.getDirectors()) {
-            directorPrefRepo.increment(user, director.getId(), affinityChange);
+
+        List<Director> directors = film.getDirectors().stream().sorted(Comparator.comparing(Director::getId)).toList();
+        for (Director director : directors) {
+            directorPrefRepo.upsertIncrement(user.getId(), director.getId(), affinityChange);
         }
     }
 }

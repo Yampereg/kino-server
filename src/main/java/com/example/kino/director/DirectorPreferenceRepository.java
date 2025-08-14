@@ -1,11 +1,13 @@
+// File: src/main/java/com/example/kino/director/DirectorPreferenceRepository.java
 package com.example.kino.director;
-import java.util.List;
-import java.util.Optional;
 
 import com.example.kino.user.User;
 import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
+
+import java.util.List;
+import java.util.Optional;
 
 public interface DirectorPreferenceRepository extends JpaRepository<DirectorPreference, DirectorPreferenceKey> {
 
@@ -14,6 +16,13 @@ public interface DirectorPreferenceRepository extends JpaRepository<DirectorPref
 
     @Modifying
     @Transactional
-    @Query("UPDATE DirectorPreference dp SET dp.affinityscore = dp.affinityscore + :amount WHERE dp.user = :user AND dp.director.id = :directorId")
-    void increment(@Param("user") User user, @Param("directorId") Integer directorId, @Param("amount") int amount);
+    @Query(value = """
+            INSERT INTO director_preference (user_id, director_id, affinityscore)
+            VALUES (:userId, :directorId, :amount)
+            ON CONFLICT (user_id, director_id)
+            DO UPDATE SET affinityscore = director_preference.affinityscore + EXCLUDED.affinityscore
+            """, nativeQuery = true)
+    void upsertIncrement(@Param("userId") Integer userId,
+                         @Param("directorId") Integer directorId,
+                         @Param("amount") int amount);
 }
