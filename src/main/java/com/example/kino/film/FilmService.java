@@ -31,51 +31,57 @@ public class FilmService {
     }
 
     public List<Film> getRecommendations(User user, int count) {
-        System.out.println("Start recommendations for user id=" + user.getId());
+        try {
+            System.out.println("Start recommendations for user id=" + user.getId());
 
-        // Fetch user preferences
-        Map<Integer, Double> genrePrefs = genrePrefRepo.findByUser(user).stream()
-                .collect(Collectors.toMap(p -> p.getGenre().getId(), p -> p.getAffinityscore()));
-        Map<Integer, Double> tagPrefs = tagPrefRepo.findByUser(user).stream()
-                .collect(Collectors.toMap(p -> p.getTag().getId(), p -> p.getAffinityscore()));
-        Map<Integer, Double> actorPrefs = actorPrefRepo.findByUser(user).stream()
-                .collect(Collectors.toMap(p -> p.getActor().getId(), p -> p.getAffinityscore()));
-        Map<Integer, Double> directorPrefs = directorPrefRepo.findByUser(user).stream()
-                .collect(Collectors.toMap(p -> p.getDirector().getId(), p -> p.getAffinityscore()));
+            Map<Integer, Double> genrePrefs = safeMap(genrePrefRepo.findByUser(user).stream()
+                    .collect(Collectors.toMap(p -> p.getGenre().getId(), p -> p.getAffinityscore())));
+            Map<Integer, Double> tagPrefs = safeMap(tagPrefRepo.findByUser(user).stream()
+                    .collect(Collectors.toMap(p -> p.getTag().getId(), p -> p.getAffinityscore())));
+            Map<Integer, Double> actorPrefs = safeMap(actorPrefRepo.findByUser(user).stream()
+                    .collect(Collectors.toMap(p -> p.getActor().getId(), p -> p.getAffinityscore())));
+            Map<Integer, Double> directorPrefs = safeMap(directorPrefRepo.findByUser(user).stream()
+                    .collect(Collectors.toMap(p -> p.getDirector().getId(), p -> p.getAffinityscore())));
 
-        int page = 0;
-        int size = 500;
-        List<Map.Entry<Film, Double>> scoredFilms = new ArrayList<>();
+            int page = 0;
+            int size = 500;
+            List<Map.Entry<Film, Double>> scoredFilms = new ArrayList<>();
 
-        while (true) {
-            Page<Film> filmPage = filmRepository.findUnseenFilmsPage(user, PageRequest.of(page, size));
-            List<Film> films = filmPage.getContent();
-            if (films.isEmpty()) break;
+            while (true) {
+                Page<Film> filmPage = filmRepository.findUnseenFilmsPage(user, PageRequest.of(page, size));
+                List<Film> films = filmPage.getContent();
+                if (films.isEmpty()) break;
 
-            Set<Integer> filmIds = films.stream().map(Film::getId).collect(Collectors.toSet());
+                Set<Integer> filmIds = films.stream().map(Film::getId).collect(Collectors.toSet());
 
-            Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
-            Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
-            Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
-            Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
+                Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
+                Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
+                Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
+                Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
 
-            for (Film film : films) {
-                double score = scoreFilm(film, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
-                        filmGenres, filmTags, filmActors, filmDirectors);
-                if (score > 0) {
-                    scoredFilms.add(Map.entry(film, score));
+                for (Film film : films) {
+                    double score = scoreFilm(film, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
+                            filmGenres, filmTags, filmActors, filmDirectors);
+                    if (score > 0) {
+                        scoredFilms.add(Map.entry(film, score));
+                    }
                 }
+
+                if (scoredFilms.size() >= count * 5 || !filmPage.hasNext()) break;
+                page++;
             }
 
-            if (scoredFilms.size() >= count * 5 || !filmPage.hasNext()) break;
-            page++;
-        }
+            return scoredFilms.stream()
+                    .sorted(Map.Entry.<Film, Double>comparingByValue().reversed())
+                    .limit(count)
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
 
-        return scoredFilms.stream()
-                .sorted(Map.Entry.<Film, Double>comparingByValue().reversed())
-                .limit(count)
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
+        } catch (Exception e) {
+            System.err.println("Error generating recommendations for user id=" + user.getId() + ": " + e.getMessage());
+            e.printStackTrace();
+            return Collections.emptyList();
+        }
     }
 
     public List<Film> getNextToSwipe(User user) {
@@ -102,5 +108,9 @@ public class FilmService {
                 .mapToDouble(aid -> actorPrefs.getOrDefault(aid, 0.0)).sum()
              + filmDirectors.getOrDefault(id, Set.of()).stream()
                 .mapToDouble(did -> directorPrefs.getOrDefault(did, 0.0)).sum();
+    }
+
+    private Map<Integer, Double> safeMap(Map<Integer, Double> map) {
+        return map != null ? map : Collections.emptyMap();
     }
 }
