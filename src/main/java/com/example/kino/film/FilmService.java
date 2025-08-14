@@ -25,9 +25,7 @@ public class FilmService {
     private final DirectorPreferenceRepository directorPrefRepo;
     private final FilmRelationsFetcher relationsFetcher;
 
-    public List<Film> getRecommendations(User user) {
-        System.out.println("Start recommendations");
-
+    public List<Film> getRecommendations(User user, int count) {
         Map<Integer, Double> genrePrefs = genrePrefRepo.findByUser(user).stream()
                 .collect(Collectors.toMap(p -> p.getGenre().getId(), p -> p.getAffinityscore()));
         Map<Integer, Double> tagPrefs = tagPrefRepo.findByUser(user).stream()
@@ -39,66 +37,35 @@ public class FilmService {
 
         int page = 0;
         int size = 500;
-        List<Map.Entry<Film, Double>> topRecommendations = new ArrayList<>();
+        List<Map.Entry<Film, Double>> scoredFilms = new ArrayList<>();
 
         while (true) {
             Page<Film> filmPage = filmRepository.findUnseenFilmsPage(user, PageRequest.of(page, size));
             List<Film> films = filmPage.getContent();
             if (films.isEmpty()) break;
 
-            Set<Integer> filmIds = films.stream().map(Film::getId).collect(Collectors.toSet());
+            Set<Integer> ids = films.stream().map(Film::getId).collect(Collectors.toSet());
+            Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(ids);
+            Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(ids);
+            Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(ids);
+            Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(ids);
 
-            Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
-            Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
-            Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
-            Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
-
-            for (Film film : films) {
-                int id = film.getId();
-                double score = 0;
-                for (Integer genreId : filmGenres.getOrDefault(id, Collections.emptySet()))
-                    score += genrePrefs.getOrDefault(genreId, 0.0);
-                for (Integer tagId : filmTags.getOrDefault(id, Collections.emptySet()))
-                    score += tagPrefs.getOrDefault(tagId, 0.0);
-                for (Integer actorId : filmActors.getOrDefault(id, Collections.emptySet()))
-                    score += actorPrefs.getOrDefault(actorId, 0.0);
-                for (Integer directorId : filmDirectors.getOrDefault(id, Collections.emptySet()))
-                    score += directorPrefs.getOrDefault(directorId, 0.0);
-
-                if (score > 0) {
-                    topRecommendations.add(Map.entry(film, score));
-                }
+            for (Film f : films) {
+                double score = scoreFilm(f, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
+                                        filmGenres, filmTags, filmActors, filmDirectors);
+                if (score > 0) scoredFilms.add(Map.entry(f, score));
             }
 
-            topRecommendations.sort(Map.Entry.comparingByValue(Comparator.reverseOrder()));
-            if (topRecommendations.size() > 3) {
-                topRecommendations = topRecommendations.subList(0, 3);
-                break;
-            }
+            // Early stop if we have enough candidates
+            if (scoredFilms.size() >= count * 5 || !filmPage.hasNext()) break;
 
-            if (!filmPage.hasNext()) break;
             page++;
         }
 
-        return topRecommendations.stream()
+        return scoredFilms.stream()
+                .sorted(Map.Entry.<Film, Double>comparingByValue().reversed())
+                .limit(count)
                 .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
-    }
-
-    public List<Film> getNextToSwipe(User user) {
-        Set<Integer> preferredGenreIds = genrePrefRepo.findByUser(user).stream()
-                .map(p -> p.getGenre().getId())
-                .collect(Collectors.toSet());
-
-        List<Film> candidateFilms = filmRepository.findTopUnseenByUser(user, PageRequest.of(0, 100));
-
-        return candidateFilms.stream()
-                .sorted((f1, f2) -> {
-                    long f1Score = f1.getGenres().stream().filter(g -> preferredGenreIds.contains(g.getId())).count();
-                    long f2Score = f2.getGenres().stream().filter(g -> preferredGenreIds.contains(g.getId())).count();
-                    return Long.compare(f2Score, f1Score); // sort descending
-                })
-                .limit(5)
                 .collect(Collectors.toList());
     }
 }
