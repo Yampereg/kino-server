@@ -54,7 +54,7 @@ public class FilmInteractionService {
         // Tags
         film.getTags().forEach(tag -> {
             tagPrefRepo.findByUserAndTag(user, tag).ifPresentOrElse(
-                pref -> tagPrefRepo.increment(user, tag.getId(), affinityChange),
+                pref -> tagPrefRepo.increment(user, tag, affinityChange),
                 () -> {
                     TagPreference newPref = TagPreference.builder()
                             .id(new TagPreferenceKey(user.getId(), tag.getId()))
