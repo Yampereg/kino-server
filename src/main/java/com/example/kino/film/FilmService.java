@@ -48,6 +48,8 @@ public class FilmService {
             System.out.println("Actor prefs: " + actorPrefs);
             System.out.println("Director prefs: " + directorPrefs);
 
+            boolean hasPrefs = !genrePrefs.isEmpty() || !tagPrefs.isEmpty() || !actorPrefs.isEmpty() || !directorPrefs.isEmpty();
+
             int page = 0;
             int size = 500;
             List<Map.Entry<Film, Double>> scoredFilms = new ArrayList<>();
@@ -57,21 +59,22 @@ public class FilmService {
                 List<Film> films = filmPage.getContent();
                 if (films.isEmpty()) break;
 
-                Set<Integer> filmIds = films.stream().map(Film::getId).collect(Collectors.toSet());
+                if (hasPrefs) {
+                    Set<Integer> filmIds = films.stream().map(Film::getId).collect(Collectors.toSet());
+                    Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
+                    Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
+                    Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
+                    Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
 
-                Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
-                Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
-                Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
-                Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
-
-
-
-
-                for (Film film : films) {
-                    double score = scoreFilm(film, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
-                            filmGenres, filmTags, filmActors, filmDirectors);
-                    if (score > 0) {
+                    for (Film film : films) {
+                        double score = scoreFilm(film, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
+                                filmGenres, filmTags, filmActors, filmDirectors);
                         scoredFilms.add(Map.entry(film, score));
+                    }
+                } else {
+                    // No preferences → fallback to popularity
+                    for (Film film : films) {
+                        scoredFilms.add(Map.entry(film, film.getPopularity())); // Assuming Film has getPopularity()
                     }
                 }
 
