@@ -1,16 +1,28 @@
 spring:
   datasource:
-    url: jdbc:postgresql://trolley.proxy.rlwy.net:18984/railway?sslmode=require
+    url: jdbc:postgresql://postgres.railway.internal:5432/railway?sslmode=require
     username: postgres
     password: cpnMnYwuAmMYtjWyOpQqsIndvGtzSFDk
+
   jpa:
-    show-sql: true
+    show-sql: false               # Turn off Hibernate SQL logging
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false          # Turn off SQL formatting
+    hibernate:
+      ddl-auto: none               # Disable automatic schema updates
+
   sql:
     init:
-      mode: always
+      mode: always                 # Keep if you want initialization scripts to run
 
 server:
   port: 8080
+
+logging:
+  level:
+    root: INFO                     # Default logging level
+    org.hibernate.SQL: OFF         # Completely hide SQL statements
+    org.hibernate.type.descriptor.sql.BasicBinder: OFF  # Hide parameter bindings
+    org.springframework.jdbc.core: ERROR                # Hide Spring JDBC SQL logs
+    org.springframework.jdbc.datasource: ERROR          # Hide datasource logs
