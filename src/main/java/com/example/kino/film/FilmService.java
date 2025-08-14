@@ -74,7 +74,7 @@ public class FilmService {
                 } else {
                     // No preferences → fallback to popularity
                     for (Film film : films) {
-                        scoredFilms.add(Map.entry(film, film.getPopularity())); // Assuming Film has getPopularity()
+                        scoredFilms.add(new AbstractMap.SimpleEntry<>(film, Double.valueOf(film.getPopularity())));
                     }
                 }
 
