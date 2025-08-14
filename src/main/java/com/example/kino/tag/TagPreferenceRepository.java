@@ -1,12 +1,12 @@
 package com.example.kino.tag;
 
-import java.util.List;
-import java.util.Optional;
-
 import com.example.kino.user.User;
-import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Optional;
 
 public interface TagPreferenceRepository extends JpaRepository<TagPreference, TagPreferenceKey> {
 
@@ -15,22 +15,13 @@ public interface TagPreferenceRepository extends JpaRepository<TagPreference, Ta
 
     @Modifying
     @Transactional
-    @Query("UPDATE TagPreference tp SET tp.affinityscore = tp.affinityscore + :amount " +
-           "WHERE tp.user = :user AND tp.tag.id = :tagId")
-    int incrementRows(@Param("user") User user, @Param("tagId") Integer tagId, @Param("amount") int amount);
-
-    @Transactional
-    default void increment(User user, Tag tag, int amount) {
-        // Try to increment first
-        int updated = incrementRows(user, tag.getId(), amount);
-        if (updated == 0) {
-            // No existing row → insert new
-            save(TagPreference.builder()
-                    .id(new TagPreferenceKey(user.getId(), tag.getId()))
-                    .user(user)
-                    .tag(tag)
-                    .affinityscore(amount)
-                    .build());
-        }
-    }
+    @Query(value = """
+        INSERT INTO tag_preference(user_id, tag_id, affinityscore)
+        VALUES (:userId, :tagId, :amount)
+        ON CONFLICT (user_id, tag_id)
+        DO UPDATE SET affinityscore = tag_preference.affinityscore + EXCLUDED.affinityscore
+    """, nativeQuery = true)
+    void incrementOrInsert(@Param("userId") Integer userId,
+                           @Param("tagId") Integer tagId,
+                           @Param("amount") int amount);
 }
