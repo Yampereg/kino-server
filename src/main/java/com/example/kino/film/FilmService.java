@@ -33,24 +33,22 @@ public class FilmService {
     public List<Film> getRecommendations(User user, int count) {
         System.out.println("Start recommendations for user id=" + user.getId());
 
-        Map<Integer, Double> genrePrefs = safeMap(() -> genrePrefRepo.findByUser(user));
-        Map<Integer, Double> tagPrefs = safeMap(() -> tagPrefRepo.findByUser(user));
-        Map<Integer, Double> actorPrefs = safeMap(() -> actorPrefRepo.findByUser(user));
-        Map<Integer, Double> directorPrefs = safeMap(() -> directorPrefRepo.findByUser(user));
+        // Fetch user preferences
+        Map<Integer, Double> genrePrefs = genrePrefRepo.findByUser(user).stream()
+                .collect(Collectors.toMap(p -> p.getGenre().getId(), p -> p.getAffinityscore()));
+        Map<Integer, Double> tagPrefs = tagPrefRepo.findByUser(user).stream()
+                .collect(Collectors.toMap(p -> p.getTag().getId(), p -> p.getAffinityscore()));
+        Map<Integer, Double> actorPrefs = actorPrefRepo.findByUser(user).stream()
+                .collect(Collectors.toMap(p -> p.getActor().getId(), p -> p.getAffinityscore()));
+        Map<Integer, Double> directorPrefs = directorPrefRepo.findByUser(user).stream()
+                .collect(Collectors.toMap(p -> p.getDirector().getId(), p -> p.getAffinityscore()));
 
         int page = 0;
         int size = 500;
         List<Map.Entry<Film, Double>> scoredFilms = new ArrayList<>();
 
         while (true) {
-            Page<Film> filmPage;
-            try {
-                filmPage = filmRepository.findUnseenFilmsPage(user, PageRequest.of(page, size));
-            } catch (Exception e) {
-                e.printStackTrace();
-                break;
-            }
-
+            Page<Film> filmPage = filmRepository.findUnseenFilmsPage(user, PageRequest.of(page, size));
             List<Film> films = filmPage.getContent();
             if (films.isEmpty()) break;
 
@@ -62,10 +60,8 @@ public class FilmService {
             Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
 
             for (Film film : films) {
-                double score = scoreFilm(
-                        film, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
-                        filmGenres, filmTags, filmActors, filmDirectors
-                );
+                double score = scoreFilm(film, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
+                        filmGenres, filmTags, filmActors, filmDirectors);
                 if (score > 0) {
                     scoredFilms.add(Map.entry(film, score));
                 }
@@ -106,33 +102,5 @@ public class FilmService {
                 .mapToDouble(aid -> actorPrefs.getOrDefault(aid, 0.0)).sum()
              + filmDirectors.getOrDefault(id, Set.of()).stream()
                 .mapToDouble(did -> directorPrefs.getOrDefault(did, 0.0)).sum();
-    }
-
-    private <T> Map<Integer, Double> safeMap(Supplier<List<T>> supplier) {
-        try {
-            return supplier.get().stream()
-                    .collect(Collectors.toMap(
-                            p -> {
-                                try { return (Integer) p.getClass().getMethod("getId").invoke(
-                                        p.getClass().getMethod("get" + getTypeName(p)).invoke(p)
-                                ); } catch (Exception e) { return 0; }
-                            },
-                            p -> {
-                                try { return (Double) p.getClass().getMethod("getAffinityscore").invoke(p); }
-                                catch (Exception e) { return 0.0; }
-                            }
-                    ));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Collections.emptyMap();
-        }
-    }
-
-    private String getTypeName(Object obj) {
-        String name = obj.getClass().getSimpleName();
-        if (name.endsWith("Preference")) {
-            return name.substring(0, name.length() - "Preference".length());
-        }
-        return name;
     }
 }
