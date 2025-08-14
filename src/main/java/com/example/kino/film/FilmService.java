@@ -31,46 +31,67 @@ public class FilmService {
     }
 
     public List<Film> getRecommendations(User user, int count) {
-        System.out.println("Start recommendations");
+        System.out.println("Start recommendations for user: id=" + user.getId() + ", username=" + user.getUsername());
 
-        Map<Integer, Double> genrePrefs = genrePrefRepo.findByUser(user).stream()
-                .collect(Collectors.toMap(p -> p.getGenre().getId(), p -> p.getAffinityscore()));
-        Map<Integer, Double> tagPrefs = tagPrefRepo.findByUser(user).stream()
-                .collect(Collectors.toMap(p -> p.getTag().getId(), p -> p.getAffinityscore()));
-        Map<Integer, Double> actorPrefs = actorPrefRepo.findByUser(user).stream()
-                .collect(Collectors.toMap(p -> p.getActor().getId(), p -> p.getAffinityscore()));
-        Map<Integer, Double> directorPrefs = directorPrefRepo.findByUser(user).stream()
-                .collect(Collectors.toMap(p -> p.getDirector().getId(), p -> p.getAffinityscore()));
+        Map<Integer, Double> genrePrefs = Collections.emptyMap();
+        Map<Integer, Double> tagPrefs = Collections.emptyMap();
+        Map<Integer, Double> actorPrefs = Collections.emptyMap();
+        Map<Integer, Double> directorPrefs = Collections.emptyMap();
+
+        try {
+            genrePrefs = genrePrefRepo.findByUserId(user.getId()).stream()
+                    .collect(Collectors.toMap(p -> p.getGenre().getId(), p -> p.getAffinityscore()));
+
+            tagPrefs = tagPrefRepo.findByUserId(user.getId()).stream()
+                    .collect(Collectors.toMap(p -> p.getTag().getId(), p -> p.getAffinityscore()));
+
+            actorPrefs = actorPrefRepo.findByUserId(user.getId()).stream()
+                    .collect(Collectors.toMap(p -> p.getActor().getId(), p -> p.getAffinityscore()));
+
+            directorPrefs = directorPrefRepo.findByUserId(user.getId()).stream()
+                    .collect(Collectors.toMap(p -> p.getDirector().getId(), p -> p.getAffinityscore()));
+
+        } catch (Exception e) {
+            System.err.println("Error fetching preferences for user " + user.getId());
+            e.printStackTrace();
+            throw e; // rethrow so errors are visible in logs
+        }
 
         int page = 0;
         int size = 500;
         List<Map.Entry<Film, Double>> scoredFilms = new ArrayList<>();
 
         while (true) {
-            Page<Film> filmPage = filmRepository.findUnseenFilmsPage(user, PageRequest.of(page, size));
-            List<Film> films = filmPage.getContent();
-            if (films.isEmpty()) break;
+            try {
+                Page<Film> filmPage = filmRepository.findUnseenFilmsPage(user.getId(), PageRequest.of(page, size));
+                List<Film> films = filmPage.getContent();
+                if (films.isEmpty()) break;
 
-            Set<Integer> filmIds = films.stream().map(Film::getId).collect(Collectors.toSet());
+                Set<Integer> filmIds = films.stream().map(Film::getId).collect(Collectors.toSet());
 
-            Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
-            Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
-            Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
-            Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
+                Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
+                Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
+                Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
+                Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
 
-            for (Film film : films) {
-                double score = scoreFilm(
-                        film, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
-                        filmGenres, filmTags, filmActors, filmDirectors
-                );
-                if (score > 0) {
-                    scoredFilms.add(Map.entry(film, score));
+                for (Film film : films) {
+                    double score = scoreFilm(
+                            film, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
+                            filmGenres, filmTags, filmActors, filmDirectors
+                    );
+                    if (score > 0) {
+                        scoredFilms.add(Map.entry(film, score));
+                    }
                 }
-            }
 
-            // Early stop if we have enough candidates
-            if (scoredFilms.size() >= count * 5 || !filmPage.hasNext()) break;
-            page++;
+                if (scoredFilms.size() >= count * 5 || !filmPage.hasNext()) break;
+                page++;
+
+            } catch (Exception e) {
+                System.err.println("Error fetching or scoring films for user " + user.getId());
+                e.printStackTrace();
+                break; // stop paging on error
+            }
         }
 
         return scoredFilms.stream()
