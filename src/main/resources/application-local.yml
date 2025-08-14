@@ -3,13 +3,15 @@ spring:
     url: jdbc:postgresql://postgres.railway.internal:5432/railway?sslmode=require
     username: postgres
     password: cpnMnYwuAmMYtjWyOpQqsIndvGtzSFDk
+
   jpa:
     show-sql: false               # Turn off Hibernate SQL logging
     properties:
       hibernate:
-        format_sql: false          # SQL formatting off to reduce verbosity
+        format_sql: false          # Turn off SQL formatting
     hibernate:
-      ddl-auto: none               # Disable automatic schema updates (optional)
+      ddl-auto: none               # Disable automatic schema updates
+
   sql:
     init:
       mode: always                 # Keep if you want initialization scripts to run
@@ -19,5 +21,8 @@ server:
 
 logging:
   level:
-    org.hibernate.SQL: ERROR        # Hide all Hibernate SQL logs
-    org.hibernate.type.descriptor.sql.BasicBinder: ERROR  # Hide parameter binding logs
+    root: INFO                     # Default logging level
+    org.hibernate.SQL: OFF         # Completely hide SQL statements
+    org.hibernate.type.descriptor.sql.BasicBinder: OFF  # Hide parameter bindings
+    org.springframework.jdbc.core: ERROR                # Hide Spring JDBC SQL logs
+    org.springframework.jdbc.datasource: ERROR          # Hide datasource logs
