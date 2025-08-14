@@ -43,14 +43,14 @@ public class FilmController {
     @GetMapping("/recommendations")
     public ResponseEntity<List<Film>> getRecommendations(@RequestHeader("Authorization") String authHeader) {
         User user = extractUserFromToken(authHeader);
-        List<Film> recommendations = filmService.getRecommendations(user);
+        List<Film> recommendations = filmService.getRecommendations(user, 10);
         return ResponseEntity.ok(recommendations);
     }
 
     @GetMapping("/next")
     public ResponseEntity<List<Film>> getNextToSwipe(@RequestHeader("Authorization") String authHeader) {
         User user = extractUserFromToken(authHeader);
-        List<Film> nextFilms = filmService.getNextToSwipe(user);
+        List<Film> nextFilms = filmService.getRecommendations(user, 3);
         return ResponseEntity.ok(nextFilms);
     }
 }
