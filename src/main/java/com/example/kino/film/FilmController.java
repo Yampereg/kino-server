@@ -49,7 +49,11 @@ public class FilmController {
 
     @GetMapping("/next")
     public ResponseEntity<List<Film>> getNextToSwipe(@RequestHeader("Authorization") String authHeader) {
+        System.out.println("Auth header received: " + authHeader);
+
         User user = extractUserFromToken(authHeader);
+        System.out.println("User extracted: " + user); // or user.getId(), user.getUsername()
+
         List<Film> nextFilms = filmService.getRecommendations(user, 3);
         return ResponseEntity.ok(nextFilms);
     }
