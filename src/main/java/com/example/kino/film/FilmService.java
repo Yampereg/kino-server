@@ -1,3 +1,4 @@
+// File: src/main/java/com/example/kino/film/FilmService.java
 package com.example.kino.film;
 
 import com.example.kino.actor.ActorPreferenceRepository;
@@ -30,67 +31,48 @@ public class FilmService {
     }
 
     public List<Film> getRecommendations(User user, int count) {
-        System.out.println("Start recommendations for user: id=" + user.getId() + ", username=" + user.getUsername());
+        System.out.println("Start recommendations for user id=" + user.getId());
 
-        Map<Integer, Double> genrePrefs = Collections.emptyMap();
-        Map<Integer, Double> tagPrefs = Collections.emptyMap();
-        Map<Integer, Double> actorPrefs = Collections.emptyMap();
-        Map<Integer, Double> directorPrefs = Collections.emptyMap();
-
-        try {
-            genrePrefs = genrePrefRepo.findByUser(user).stream()
-                    .collect(Collectors.toMap(p -> p.getGenre().getId(), p -> p.getAffinityscore()));
-
-            tagPrefs = tagPrefRepo.findByUser(user).stream()
-                    .collect(Collectors.toMap(p -> p.getTag().getId(), p -> p.getAffinityscore()));
-
-            actorPrefs = actorPrefRepo.findByUser(user).stream()
-                    .collect(Collectors.toMap(p -> p.getActor().getId(), p -> p.getAffinityscore()));
-
-            directorPrefs = directorPrefRepo.findByUser(user).stream()
-                    .collect(Collectors.toMap(p -> p.getDirector().getId(), p -> p.getAffinityscore()));
-
-        } catch (Exception e) {
-            System.err.println("Error fetching preferences for user " + user.getId());
-            e.printStackTrace();
-            throw e;
-        }
+        Map<Integer, Double> genrePrefs = safeMap(() -> genrePrefRepo.findByUser(user));
+        Map<Integer, Double> tagPrefs = safeMap(() -> tagPrefRepo.findByUser(user));
+        Map<Integer, Double> actorPrefs = safeMap(() -> actorPrefRepo.findByUser(user));
+        Map<Integer, Double> directorPrefs = safeMap(() -> directorPrefRepo.findByUser(user));
 
         int page = 0;
         int size = 500;
         List<Map.Entry<Film, Double>> scoredFilms = new ArrayList<>();
 
         while (true) {
+            Page<Film> filmPage;
             try {
-                Page<Film> filmPage = filmRepository.findUnseenFilmsPage(user, PageRequest.of(page, size));
-                List<Film> films = filmPage.getContent();
-                if (films.isEmpty()) break;
-
-                Set<Integer> filmIds = films.stream().map(Film::getId).collect(Collectors.toSet());
-
-                Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
-                Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
-                Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
-                Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
-
-                for (Film film : films) {
-                    double score = scoreFilm(
-                            film, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
-                            filmGenres, filmTags, filmActors, filmDirectors
-                    );
-                    if (score > 0) {
-                        scoredFilms.add(Map.entry(film, score));
-                    }
-                }
-
-                if (scoredFilms.size() >= count * 5 || !filmPage.hasNext()) break;
-                page++;
-
+                filmPage = filmRepository.findUnseenFilmsPage(user, PageRequest.of(page, size));
             } catch (Exception e) {
-                System.err.println("Error fetching or scoring films for user " + user.getId());
                 e.printStackTrace();
                 break;
             }
+
+            List<Film> films = filmPage.getContent();
+            if (films.isEmpty()) break;
+
+            Set<Integer> filmIds = films.stream().map(Film::getId).collect(Collectors.toSet());
+
+            Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
+            Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
+            Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
+            Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
+
+            for (Film film : films) {
+                double score = scoreFilm(
+                        film, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
+                        filmGenres, filmTags, filmActors, filmDirectors
+                );
+                if (score > 0) {
+                    scoredFilms.add(Map.entry(film, score));
+                }
+            }
+
+            if (scoredFilms.size() >= count * 5 || !filmPage.hasNext()) break;
+            page++;
         }
 
         return scoredFilms.stream()
@@ -124,5 +106,33 @@ public class FilmService {
                 .mapToDouble(aid -> actorPrefs.getOrDefault(aid, 0.0)).sum()
              + filmDirectors.getOrDefault(id, Set.of()).stream()
                 .mapToDouble(did -> directorPrefs.getOrDefault(did, 0.0)).sum();
+    }
+
+    private <T> Map<Integer, Double> safeMap(Supplier<List<T>> supplier) {
+        try {
+            return supplier.get().stream()
+                    .collect(Collectors.toMap(
+                            p -> {
+                                try { return (Integer) p.getClass().getMethod("getId").invoke(
+                                        p.getClass().getMethod("get" + getTypeName(p)).invoke(p)
+                                ); } catch (Exception e) { return 0; }
+                            },
+                            p -> {
+                                try { return (Double) p.getClass().getMethod("getAffinityscore").invoke(p); }
+                                catch (Exception e) { return 0.0; }
+                            }
+                    ));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Collections.emptyMap();
+        }
+    }
+
+    private String getTypeName(Object obj) {
+        String name = obj.getClass().getSimpleName();
+        if (name.endsWith("Preference")) {
+            return name.substring(0, name.length() - "Preference".length());
+        }
+        return name;
     }
 }
