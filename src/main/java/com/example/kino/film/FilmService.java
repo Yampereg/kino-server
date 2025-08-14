@@ -25,7 +25,14 @@ public class FilmService {
     private final DirectorPreferenceRepository directorPrefRepo;
     private final FilmRelationsFetcher relationsFetcher;
 
+    public List<Film> getRecommendations(User user) {
+        // Default to 10 films if no count specified
+        return getRecommendations(user, 10);
+    }
+
     public List<Film> getRecommendations(User user, int count) {
+        System.out.println("Start recommendations");
+
         Map<Integer, Double> genrePrefs = genrePrefRepo.findByUser(user).stream()
                 .collect(Collectors.toMap(p -> p.getGenre().getId(), p -> p.getAffinityscore()));
         Map<Integer, Double> tagPrefs = tagPrefRepo.findByUser(user).stream()
@@ -44,21 +51,25 @@ public class FilmService {
             List<Film> films = filmPage.getContent();
             if (films.isEmpty()) break;
 
-            Set<Integer> ids = films.stream().map(Film::getId).collect(Collectors.toSet());
-            Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(ids);
-            Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(ids);
-            Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(ids);
-            Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(ids);
+            Set<Integer> filmIds = films.stream().map(Film::getId).collect(Collectors.toSet());
 
-            for (Film f : films) {
-                double score = scoreFilm(f, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
-                                        filmGenres, filmTags, filmActors, filmDirectors);
-                if (score > 0) scoredFilms.add(Map.entry(f, score));
+            Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
+            Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
+            Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
+            Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
+
+            for (Film film : films) {
+                double score = scoreFilm(
+                        film, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
+                        filmGenres, filmTags, filmActors, filmDirectors
+                );
+                if (score > 0) {
+                    scoredFilms.add(Map.entry(film, score));
+                }
             }
 
             // Early stop if we have enough candidates
             if (scoredFilms.size() >= count * 5 || !filmPage.hasNext()) break;
-
             page++;
         }
 
@@ -67,5 +78,32 @@ public class FilmService {
                 .limit(count)
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toList());
+    }
+
+    public List<Film> getNextToSwipe(User user) {
+        // Return 3 recommendations for swiping
+        return getRecommendations(user, 3);
+    }
+
+    private double scoreFilm(
+            Film film,
+            Map<Integer, Double> genrePrefs,
+            Map<Integer, Double> tagPrefs,
+            Map<Integer, Double> actorPrefs,
+            Map<Integer, Double> directorPrefs,
+            Map<Integer, Set<Integer>> filmGenres,
+            Map<Integer, Set<Integer>> filmTags,
+            Map<Integer, Set<Integer>> filmActors,
+            Map<Integer, Set<Integer>> filmDirectors
+    ) {
+        int id = film.getId();
+        return filmGenres.getOrDefault(id, Set.of()).stream()
+                .mapToDouble(gid -> genrePrefs.getOrDefault(gid, 0.0)).sum()
+             + filmTags.getOrDefault(id, Set.of()).stream()
+                .mapToDouble(tid -> tagPrefs.getOrDefault(tid, 0.0)).sum()
+             + filmActors.getOrDefault(id, Set.of()).stream()
+                .mapToDouble(aid -> actorPrefs.getOrDefault(aid, 0.0)).sum()
+             + filmDirectors.getOrDefault(id, Set.of()).stream()
+                .mapToDouble(did -> directorPrefs.getOrDefault(did, 0.0)).sum();
     }
 }
