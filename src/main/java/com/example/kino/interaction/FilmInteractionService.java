@@ -38,11 +38,11 @@ public class FilmInteractionService {
         // Save like interaction
         interactionRepository.save(new UserFilmInteraction(user, film, true));
 
-        // Atomic upserts for all preferences
-        film.getTags().forEach(tag -> tagPrefRepo.upsert(user.getId(), tag.getId(), 1));
-        film.getGenres().forEach(genre -> genrePrefRepo.upsert(user.getId(), genre.getId(), 1));
-        film.getActors().forEach(actor -> actorPrefRepo.upsert(user.getId(), actor.getId(), 1));
-        film.getDirectors().forEach(director -> directorPrefRepo.upsert(user.getId(), director.getId(), 1));
+        // Atomic increments for all preferences
+        film.getTags().forEach(tag -> tagPrefRepo.increment(user.getId(), tag.getId(), 1));
+        film.getGenres().forEach(genre -> genrePrefRepo.increment(user.getId(), genre.getId(), 1));
+        film.getActors().forEach(actor -> actorPrefRepo.increment(user.getId(), actor.getId(), 1));
+        film.getDirectors().forEach(director -> directorPrefRepo.increment(user.getId(), director.getId(), 1));
     }
 
     @Transactional
@@ -53,11 +53,11 @@ public class FilmInteractionService {
         // Save dislike interaction
         interactionRepository.save(new UserFilmInteraction(user, film, false));
 
-        // Atomic upserts for all preferences with negative score
-        film.getTags().forEach(tag -> tagPrefRepo.upsert(user.getId(), tag.getId(), -1));
-        film.getGenres().forEach(genre -> genrePrefRepo.upsert(user.getId(), genre.getId(), -1));
-        film.getActors().forEach(actor -> actorPrefRepo.upsert(user.getId(), actor.getId(), -1));
-        film.getDirectors().forEach(director -> directorPrefRepo.upsert(user.getId(), director.getId(), -1));
+        // Atomic increments for all preferences with negative score
+        film.getTags().forEach(tag -> tagPrefRepo.increment(user.getId(), tag.getId(), -1));
+        film.getGenres().forEach(genre -> genrePrefRepo.increment(user.getId(), genre.getId(), -1));
+        film.getActors().forEach(actor -> actorPrefRepo.increment(user.getId(), actor.getId(), -1));
+        film.getDirectors().forEach(director -> directorPrefRepo.increment(user.getId(), director.getId(), -1));
     }
 
     @Transactional
@@ -68,10 +68,10 @@ public class FilmInteractionService {
         // Save superlike as positive interaction
         interactionRepository.save(new UserFilmInteraction(user, film, true));
 
-        // Atomic upserts with higher score for superlike
-        film.getTags().forEach(tag -> tagPrefRepo.upsert(user.getId(), tag.getId(), 2));
-        film.getGenres().forEach(genre -> genrePrefRepo.upsert(user.getId(), genre.getId(), 2));
-        film.getActors().forEach(actor -> actorPrefRepo.upsert(user.getId(), actor.getId(), 2));
-        film.getDirectors().forEach(director -> directorPrefRepo.upsert(user.getId(), director.getId(), 2));
+        // Atomic increments with higher score for superlike
+        film.getTags().forEach(tag -> tagPrefRepo.increment(user.getId(), tag.getId(), 2));
+        film.getGenres().forEach(genre -> genrePrefRepo.increment(user.getId(), genre.getId(), 2));
+        film.getActors().forEach(actor -> actorPrefRepo.increment(user.getId(), actor.getId(), 2));
+        film.getDirectors().forEach(director -> directorPrefRepo.increment(user.getId(), director.getId(), 2));
     }
 }
