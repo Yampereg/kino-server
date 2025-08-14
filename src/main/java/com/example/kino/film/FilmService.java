@@ -43,6 +43,11 @@ public class FilmService {
             Map<Integer, Double> directorPrefs = safeMap(directorPrefRepo.findByUser(user).stream()
                     .collect(Collectors.toMap(p -> p.getDirector().getId(), p -> p.getAffinityscore())));
 
+            System.out.println("Genre prefs: " + genrePrefs);
+            System.out.println("Tag prefs: " + tagPrefs);
+            System.out.println("Actor prefs: " + actorPrefs);
+            System.out.println("Director prefs: " + directorPrefs);
+
             int page = 0;
             int size = 500;
             List<Map.Entry<Film, Double>> scoredFilms = new ArrayList<>();
@@ -58,6 +63,9 @@ public class FilmService {
                 Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
                 Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
                 Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
+
+
+
 
                 for (Film film : films) {
                     double score = scoreFilm(film, genrePrefs, tagPrefs, actorPrefs, directorPrefs,
