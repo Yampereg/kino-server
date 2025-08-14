@@ -1,11 +1,19 @@
 // File: src/main/java/com/example/kino/interaction/FilmInteractionService.java
 package com.example.kino.interaction;
 
+import com.example.kino.actor.ActorPreference;
+import com.example.kino.actor.ActorPreferenceKey;
 import com.example.kino.actor.ActorPreferenceRepository;
+import com.example.kino.director.DirectorPreference;
+import com.example.kino.director.DirectorPreferenceKey;
 import com.example.kino.director.DirectorPreferenceRepository;
 import com.example.kino.film.Film;
 import com.example.kino.film.FilmRepository;
+import com.example.kino.genre.GenrePreference;
+import com.example.kino.genre.GenrePreferenceKey;
 import com.example.kino.genre.GenrePreferenceRepository;
+import com.example.kino.tag.TagPreference;
+import com.example.kino.tag.TagPreferenceKey;
 import com.example.kino.tag.TagPreferenceRepository;
 import com.example.kino.user.User;
 import com.example.kino.userinteraction.UserFilmInteraction;
@@ -28,46 +36,83 @@ public class FilmInteractionService {
 
     @Transactional
     public void likeFilm(User user, Integer filmId) {
-        Film film = filmRepository.findById(filmId)
-                .orElseThrow(() -> new RuntimeException("Film not found"));
-
-        // Save like interaction
-        interactionRepository.save(new UserFilmInteraction(user, film, true));
-
-        // Increment preferences (or create if missing)
-        film.getTags().forEach(tag -> tagPrefRepo.increment(user, tag.getId(), 1));
-        film.getGenres().forEach(genre -> genrePrefRepo.increment(user, genre.getId(), 1));
-        film.getActors().forEach(actor -> actorPrefRepo.increment(user, actor.getId(), 1));
-        film.getDirectors().forEach(director -> directorPrefRepo.increment(user, director.getId(), 1));
+        updateFilmInteraction(user, filmId, 1, true);
     }
 
     @Transactional
     public void dislikeFilm(User user, Integer filmId) {
-        Film film = filmRepository.findById(filmId)
-                .orElseThrow(() -> new RuntimeException("Film not found"));
-
-        // Save dislike interaction
-        interactionRepository.save(new UserFilmInteraction(user, film, false));
-
-        // Decrement preferences (or create if missing)
-        film.getTags().forEach(tag -> tagPrefRepo.increment(user, tag.getId(), -1));
-        film.getGenres().forEach(genre -> genrePrefRepo.increment(user, genre.getId(), -1));
-        film.getActors().forEach(actor -> actorPrefRepo.increment(user, actor.getId(), -1));
-        film.getDirectors().forEach(director -> directorPrefRepo.increment(user, director.getId(), -1));
+        updateFilmInteraction(user, filmId, -1, false);
     }
 
-    @Transactional
-    public void superlikeFilm(User user, Integer filmId) {
+    private void updateFilmInteraction(User user, Integer filmId, int affinityChange, boolean liked) {
         Film film = filmRepository.findById(filmId)
                 .orElseThrow(() -> new RuntimeException("Film not found"));
 
-        // Save superlike interaction
-        interactionRepository.save(new UserFilmInteraction(user, film, true));
+        // Save interaction
+        interactionRepository.save(new UserFilmInteraction(user, film, liked));
 
-        // Increase preferences by 2
-        film.getTags().forEach(tag -> tagPrefRepo.increment(user, tag.getId(), 2));
-        film.getGenres().forEach(genre -> genrePrefRepo.increment(user, genre.getId(), 2));
-        film.getActors().forEach(actor -> actorPrefRepo.increment(user, actor.getId(), 2));
-        film.getDirectors().forEach(director -> directorPrefRepo.increment(user, director.getId(), 2));
+        // Tags
+        film.getTags().forEach(tag -> {
+            tagPrefRepo.findByUserAndTag(user, tag).ifPresentOrElse(
+                pref -> tagPrefRepo.increment(user, tag.getId(), affinityChange),
+                () -> {
+                    TagPreference newPref = TagPreference.builder()
+                            .id(new TagPreferenceKey(user.getId(), tag.getId()))
+                            .user(user)
+                            .tag(tag)
+                            .affinityscore(affinityChange)
+                            .build();
+                    tagPrefRepo.save(newPref);
+                }
+            );
+        });
+
+        // Genres
+        film.getGenres().forEach(genre -> {
+            genrePrefRepo.findByUserAndGenre(user, genre).ifPresentOrElse(
+                pref -> genrePrefRepo.increment(user, genre.getId(), affinityChange),
+                () -> {
+                    GenrePreference newPref = GenrePreference.builder()
+                            .id(new GenrePreferenceKey(user.getId(), genre.getId()))
+                            .user(user)
+                            .genre(genre)
+                            .affinityscore(affinityChange)
+                            .build();
+                    genrePrefRepo.save(newPref);
+                }
+            );
+        });
+
+        // Actors
+        film.getActors().forEach(actor -> {
+            actorPrefRepo.findByUserAndActor(user, actor).ifPresentOrElse(
+                pref -> actorPrefRepo.increment(user, actor.getId(), affinityChange),
+                () -> {
+                    ActorPreference newPref = ActorPreference.builder()
+                            .id(new ActorPreferenceKey(user.getId(), actor.getId()))
+                            .user(user)
+                            .actor(actor)
+                            .affinityscore(affinityChange)
+                            .build();
+                    actorPrefRepo.save(newPref);
+                }
+            );
+        });
+
+        // Directors
+        film.getDirectors().forEach(director -> {
+            directorPrefRepo.findByUserAndDirector(user, director).ifPresentOrElse(
+                pref -> directorPrefRepo.increment(user, director.getId(), affinityChange),
+                () -> {
+                    DirectorPreference newPref = DirectorPreference.builder()
+                            .id(new DirectorPreferenceKey(user.getId(), director.getId()))
+                            .user(user)
+                            .director(director)
+                            .affinityscore(affinityChange)
+                            .build();
+                    directorPrefRepo.save(newPref);
+                }
+            );
+        });
     }
 }
