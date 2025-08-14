@@ -1,15 +1,11 @@
 // File: src/main/java/com/example/kino/interaction/FilmInteractionService.java
 package com.example.kino.interaction;
 
-import com.example.kino.actor.Actor;
 import com.example.kino.actor.ActorPreferenceRepository;
-import com.example.kino.director.Director;
 import com.example.kino.director.DirectorPreferenceRepository;
 import com.example.kino.film.Film;
 import com.example.kino.film.FilmRepository;
-import com.example.kino.genre.Genre;
 import com.example.kino.genre.GenrePreferenceRepository;
-import com.example.kino.tag.Tag;
 import com.example.kino.tag.TagPreferenceRepository;
 import com.example.kino.user.User;
 import com.example.kino.userinteraction.UserFilmInteraction;
@@ -38,11 +34,11 @@ public class FilmInteractionService {
         // Save like interaction
         interactionRepository.save(new UserFilmInteraction(user, film, true));
 
-        // Atomic increments for all preferences
-        film.getTags().forEach(tag -> tagPrefRepo.increment(user.getId(), tag.getId(), 1));
-        film.getGenres().forEach(genre -> genrePrefRepo.increment(user.getId(), genre.getId(), 1));
-        film.getActors().forEach(actor -> actorPrefRepo.increment(user.getId(), actor.getId(), 1));
-        film.getDirectors().forEach(director -> directorPrefRepo.increment(user.getId(), director.getId(), 1));
+        // Increment preferences (or create if missing)
+        film.getTags().forEach(tag -> tagPrefRepo.increment(user, tag.getId(), 1));
+        film.getGenres().forEach(genre -> genrePrefRepo.increment(user, genre.getId(), 1));
+        film.getActors().forEach(actor -> actorPrefRepo.increment(user, actor.getId(), 1));
+        film.getDirectors().forEach(director -> directorPrefRepo.increment(user, director.getId(), 1));
     }
 
     @Transactional
@@ -53,11 +49,11 @@ public class FilmInteractionService {
         // Save dislike interaction
         interactionRepository.save(new UserFilmInteraction(user, film, false));
 
-        // Atomic increments for all preferences with negative score
-        film.getTags().forEach(tag -> tagPrefRepo.increment(user.getId(), tag.getId(), -1));
-        film.getGenres().forEach(genre -> genrePrefRepo.increment(user.getId(), genre.getId(), -1));
-        film.getActors().forEach(actor -> actorPrefRepo.increment(user.getId(), actor.getId(), -1));
-        film.getDirectors().forEach(director -> directorPrefRepo.increment(user.getId(), director.getId(), -1));
+        // Decrement preferences (or create if missing)
+        film.getTags().forEach(tag -> tagPrefRepo.increment(user, tag.getId(), -1));
+        film.getGenres().forEach(genre -> genrePrefRepo.increment(user, genre.getId(), -1));
+        film.getActors().forEach(actor -> actorPrefRepo.increment(user, actor.getId(), -1));
+        film.getDirectors().forEach(director -> directorPrefRepo.increment(user, director.getId(), -1));
     }
 
     @Transactional
@@ -65,13 +61,13 @@ public class FilmInteractionService {
         Film film = filmRepository.findById(filmId)
                 .orElseThrow(() -> new RuntimeException("Film not found"));
 
-        // Save superlike as positive interaction
+        // Save superlike interaction
         interactionRepository.save(new UserFilmInteraction(user, film, true));
 
-        // Atomic increments with higher score for superlike
-        film.getTags().forEach(tag -> tagPrefRepo.increment(user.getId(), tag.getId(), 2));
-        film.getGenres().forEach(genre -> genrePrefRepo.increment(user.getId(), genre.getId(), 2));
-        film.getActors().forEach(actor -> actorPrefRepo.increment(user.getId(), actor.getId(), 2));
-        film.getDirectors().forEach(director -> directorPrefRepo.increment(user.getId(), director.getId(), 2));
+        // Increase preferences by 2
+        film.getTags().forEach(tag -> tagPrefRepo.increment(user, tag.getId(), 2));
+        film.getGenres().forEach(genre -> genrePrefRepo.increment(user, genre.getId(), 2));
+        film.getActors().forEach(actor -> actorPrefRepo.increment(user, actor.getId(), 2));
+        film.getDirectors().forEach(director -> directorPrefRepo.increment(user, director.getId(), 2));
     }
 }
