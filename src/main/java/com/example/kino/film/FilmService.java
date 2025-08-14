@@ -26,7 +26,6 @@ public class FilmService {
     private final FilmRelationsFetcher relationsFetcher;
 
     public List<Film> getRecommendations(User user) {
-        // Default to 10 films if no count specified
         return getRecommendations(user, 10);
     }
 
@@ -39,22 +38,22 @@ public class FilmService {
         Map<Integer, Double> directorPrefs = Collections.emptyMap();
 
         try {
-            genrePrefs = genrePrefRepo.findByUserId(user.getId()).stream()
+            genrePrefs = genrePrefRepo.findByUser(user).stream()
                     .collect(Collectors.toMap(p -> p.getGenre().getId(), p -> p.getAffinityscore()));
 
-            tagPrefs = tagPrefRepo.findByUserId(user.getId()).stream()
+            tagPrefs = tagPrefRepo.findByUser(user).stream()
                     .collect(Collectors.toMap(p -> p.getTag().getId(), p -> p.getAffinityscore()));
 
-            actorPrefs = actorPrefRepo.findByUserId(user.getId()).stream()
+            actorPrefs = actorPrefRepo.findByUser(user).stream()
                     .collect(Collectors.toMap(p -> p.getActor().getId(), p -> p.getAffinityscore()));
 
-            directorPrefs = directorPrefRepo.findByUserId(user.getId()).stream()
+            directorPrefs = directorPrefRepo.findByUser(user).stream()
                     .collect(Collectors.toMap(p -> p.getDirector().getId(), p -> p.getAffinityscore()));
 
         } catch (Exception e) {
             System.err.println("Error fetching preferences for user " + user.getId());
             e.printStackTrace();
-            throw e; // rethrow so errors are visible in logs
+            throw e;
         }
 
         int page = 0;
@@ -63,7 +62,7 @@ public class FilmService {
 
         while (true) {
             try {
-                Page<Film> filmPage = filmRepository.findUnseenFilmsPage(user.getId(), PageRequest.of(page, size));
+                Page<Film> filmPage = filmRepository.findUnseenFilmsPage(user, PageRequest.of(page, size));
                 List<Film> films = filmPage.getContent();
                 if (films.isEmpty()) break;
 
@@ -90,7 +89,7 @@ public class FilmService {
             } catch (Exception e) {
                 System.err.println("Error fetching or scoring films for user " + user.getId());
                 e.printStackTrace();
-                break; // stop paging on error
+                break;
             }
         }
 
@@ -102,7 +101,6 @@ public class FilmService {
     }
 
     public List<Film> getNextToSwipe(User user) {
-        // Return 3 recommendations for swiping
         return getRecommendations(user, 3);
     }
 
