@@ -61,7 +61,7 @@ public class FilmInteractionService {
             actorPrefRepo.increment(user, actor.getId(), affinityChange);
         }
         for (Director director : film.getDirectors()) {
-            directorPrefRepo.increment(user.getId, director.getId(), affinityChange);
+            directorPrefRepo.increment(user, director.getId(), affinityChange);
         }
     }
 }
