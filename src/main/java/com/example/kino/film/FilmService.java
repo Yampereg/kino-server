@@ -34,6 +34,8 @@ public class FilmService {
     public List<Film> getRecommendations(User user, int count) {
         try {
             List<Film> candidates = filmRepository.findCandidatesPool(user, PageRequest.of(0, 1000));
+            if (candidates.isEmpty()) return Collections.emptyList();
+
             Set<Integer> filmIds = candidates.stream().map(Film::getId).collect(Collectors.toSet());
 
             var userTags = tagPrefRepo.findByUser(user);
@@ -76,15 +78,29 @@ public class FilmService {
                 System.out.println("FILM: " + sf.getFilm().getTitle() + " | SCORE: " + String.format("%.2f", sf.getScore()));
                 System.out.println("   -> " + sf.getDebugNote());
             }
-            System.out.println("---------------------------------------------------------------");
-
-            return rankedParams.stream()
+            
+            List<Film> finalRecommendations = rankedParams.stream()
                     .map(ScoredFilm::getFilm)
                     .collect(Collectors.toList());
 
+            if (finalRecommendations.size() < count) {
+                System.out.println("   -> NOT ENOUGH MATCHES. FILLING WITH POPULAR FALLBACKS.");
+                Set<Integer> existingIds = finalRecommendations.stream().map(Film::getId).collect(Collectors.toSet());
+                for (Film f : candidates) {
+                    if (finalRecommendations.size() >= count) break;
+                    if (!existingIds.contains(f.getId())) {
+                        finalRecommendations.add(f);
+                        System.out.println("FALLBACK ADDED: " + f.getTitle());
+                    }
+                }
+            }
+            System.out.println("---------------------------------------------------------------");
+
+            return finalRecommendations;
+
         } catch (Exception e) {
             e.printStackTrace();
-            return Collections.emptyList();
+            return filmRepository.findCandidatesPool(user, PageRequest.of(0, count));
         }
     }
 
