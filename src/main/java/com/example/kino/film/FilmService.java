@@ -26,23 +26,33 @@ public class FilmService {
     private final DirectorPreferenceRepository directorPrefRepo;
     private final FilmRelationsFetcher relationsFetcher;
 
-    private static final double TAG_WEIGHT = 10.0;
-    private static final double GENRE_WEIGHT = 5.0;
-    private static final double DIRECTOR_WEIGHT = 2.0;
-    private static final double ACTOR_WEIGHT = 0.5;
+    private static final double TAG_WEIGHT = 15.0;     
+    private static final double GENRE_WEIGHT = 5.0;    
+    private static final double DIRECTOR_WEIGHT = 3.0; 
+    private static final double ACTOR_WEIGHT = 1.0;    
 
     public List<Film> getRecommendations(User user, int count) {
         try {
-            List<Film> candidates = filmRepository.findCandidatesPool(user, PageRequest.of(0, 1000));
+            // 1. Fetch a large pool of unseen films (Top 500 popular)
+            List<Film> candidates = filmRepository.findCandidatesPool(user, PageRequest.of(0, 500));
             if (candidates.isEmpty()) return Collections.emptyList();
 
-            Set<Integer> filmIds = candidates.stream().map(Film::getId).collect(Collectors.toSet());
-
+            // 2. Fetch User Preferences
             var userTags = tagPrefRepo.findByUser(user);
             var userGenres = genrePrefRepo.findByUser(user);
             var userDirectors = directorPrefRepo.findByUser(user);
             var userActors = actorPrefRepo.findByUser(user);
 
+            // 3. Cold Start Check: If user has NO preferences, return pure random discovery
+            boolean isColdStart = userTags.isEmpty() && userGenres.isEmpty() && userDirectors.isEmpty() && userActors.isEmpty();
+            if (isColdStart) {
+                System.out.println("----- DEBUG: COLD START (No Preferences) -----");
+                Collections.shuffle(candidates); 
+                return candidates.stream().limit(count).collect(Collectors.toList());
+            }
+
+            // 4. Map Preferences for fast lookup
+            Set<Integer> filmIds = candidates.stream().map(Film::getId).collect(Collectors.toSet());
             Map<Integer, Double> tagScores = getScores(userTags, p -> p.getTag().getId(), p -> p.getAffinityscore());
             Map<Integer, String> tagNames = getNames(userTags, p -> p.getTag().getId(), p -> p.getTag().getName());
 
@@ -55,11 +65,13 @@ public class FilmService {
             Map<Integer, Double> actorScores = getScores(userActors, p -> p.getActor().getId(), p -> p.getAffinityscore());
             Map<Integer, String> actorNames = getNames(userActors, p -> p.getActor().getId(), p -> p.getActor().getName());
 
+            // 5. Fetch Relations for Candidates
             Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
             Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
             Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
             Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
 
+            // 6. Calculate Scores (Additive Logic - OR condition)
             List<ScoredFilm> rankedParams = candidates.parallelStream()
                     .map(film -> calculateScore(
                             film,
@@ -68,29 +80,36 @@ public class FilmService {
                             dirScores, dirNames, filmDirectors.getOrDefault(film.getId(), Set.of()),
                             actorScores, actorNames, filmActors.getOrDefault(film.getId(), Set.of())
                     ))
-                    .filter(sf -> sf.getScore() > 0)
+                    .filter(sf -> sf.getScore() > 0) 
                     .sorted(Comparator.comparingDouble(ScoredFilm::getScore).reversed())
-                    .limit(count)
                     .collect(Collectors.toList());
 
+            // 7. Process Final Output
             System.out.println("----- RECOMMENDATION DEBUG LOG FOR USER " + user.getId() + " -----");
+            
+            List<Film> finalRecommendations = new ArrayList<>();
+            Set<Integer> usedIds = new HashSet<>();
+
+            // Take Matches
             for (ScoredFilm sf : rankedParams) {
-                System.out.println("FILM: " + sf.getFilm().getTitle() + " | SCORE: " + String.format("%.2f", sf.getScore()));
+                if (finalRecommendations.size() >= count) break;
+                finalRecommendations.add(sf.getFilm());
+                usedIds.add(sf.getFilm().getId());
+                System.out.println("MATCH: " + sf.getFilm().getTitle() + " | SCORE: " + String.format("%.2f", sf.getScore()));
                 System.out.println("   -> " + sf.getDebugNote());
             }
-            
-            List<Film> finalRecommendations = rankedParams.stream()
-                    .map(ScoredFilm::getFilm)
-                    .collect(Collectors.toList());
 
+            // Fill with Random Fallbacks if not enough matches
             if (finalRecommendations.size() < count) {
-                System.out.println("   -> NOT ENOUGH MATCHES. FILLING WITH POPULAR FALLBACKS.");
-                Set<Integer> existingIds = finalRecommendations.stream().map(Film::getId).collect(Collectors.toSet());
+                System.out.println("   -> NOT ENOUGH MATCHES. FILLING WITH RANDOMIZED POPULAR FILMS.");
+                Collections.shuffle(candidates); // Randomize the pool so fallbacks differ each time
+                
                 for (Film f : candidates) {
                     if (finalRecommendations.size() >= count) break;
-                    if (!existingIds.contains(f.getId())) {
+                    if (!usedIds.contains(f.getId())) {
                         finalRecommendations.add(f);
-                        System.out.println("FALLBACK ADDED: " + f.getTitle());
+                        usedIds.add(f.getId());
+                        System.out.println("RANDOM FALLBACK: " + f.getTitle());
                     }
                 }
             }
@@ -100,42 +119,57 @@ public class FilmService {
 
         } catch (Exception e) {
             e.printStackTrace();
-            return filmRepository.findCandidatesPool(user, PageRequest.of(0, count));
+            return Collections.emptyList();
         }
     }
 
     public List<Film> getNextToSwipe(User user) {
         try {
-            List<Film> candidates = filmRepository.findCandidatesPool(user, PageRequest.of(0, 50));
+            // 1. Get Top 100 Popular Unseen to ensure quality pool
+            List<Film> candidates = filmRepository.findCandidatesPool(user, PageRequest.of(0, 100));
             
+            // 2. Identify Favorite Genre
             Map<Integer, Double> genrePrefs = getScores(genrePrefRepo.findByUser(user), p -> p.getGenre().getId(), p -> p.getAffinityscore());
-
-            if (genrePrefs.isEmpty()) {
-                Collections.shuffle(candidates);
-                return candidates.stream().limit(3).collect(Collectors.toList());
-            }
-
             Integer favoriteGenreId = genrePrefs.entrySet().stream()
                     .max(Map.Entry.comparingByValue())
                     .map(Map.Entry::getKey)
                     .orElse(null);
 
-            Set<Integer> filmIds = candidates.stream().map(Film::getId).collect(Collectors.toSet());
-            Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
+            List<Film> priorityFilms = new ArrayList<>();
+            List<Film> otherFilms = new ArrayList<>();
 
-            return candidates.stream()
-                    .sorted((f1, f2) -> {
-                        boolean f1Match = filmGenres.getOrDefault(f1.getId(), Set.of()).contains(favoriteGenreId);
-                        boolean f2Match = filmGenres.getOrDefault(f2.getId(), Set.of()).contains(favoriteGenreId);
-                        if (f1Match && !f2Match) return -1;
-                        if (!f1Match && f2Match) return 1;
-                        return Double.compare(f2.getPopularity(), f1.getPopularity());
-                    })
-                    .limit(3)
-                    .collect(Collectors.toList());
+            // 3. Split into Priority (Genre Match) and Others
+            if (favoriteGenreId != null) {
+                Set<Integer> filmIds = candidates.stream().map(Film::getId).collect(Collectors.toSet());
+                Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
+
+                for (Film f : candidates) {
+                    Set<Integer> genres = filmGenres.getOrDefault(f.getId(), Set.of());
+                    if (genres.contains(favoriteGenreId)) {
+                        priorityFilms.add(f);
+                    } else {
+                        otherFilms.add(f);
+                    }
+                }
+            } else {
+                otherFilms.addAll(candidates);
+            }
+
+            // 4. Shuffle both lists to ensure randomness on every call
+            Collections.shuffle(priorityFilms);
+            Collections.shuffle(otherFilms);
+
+            // 5. Merge: Priority first, then others
+            List<Film> result = new ArrayList<>(priorityFilms);
+            result.addAll(otherFilms);
+
+            return result.stream().limit(3).collect(Collectors.toList());
 
         } catch (Exception e) {
-            return filmRepository.findCandidatesPool(user, PageRequest.of(0, 3));
+            // Fallback: Random 3 from simple pool
+            List<Film> fallback = filmRepository.findCandidatesPool(user, PageRequest.of(0, 20));
+            Collections.shuffle(fallback);
+            return fallback.stream().limit(3).collect(Collectors.toList());
         }
     }
 
@@ -149,35 +183,39 @@ public class FilmService {
         double score = 0.0;
         StringBuilder note = new StringBuilder();
 
+        // 1. Tags (Most Important)
         for (Integer id : fTags) {
             if (tagPrefs.containsKey(id)) {
                 double s = tagPrefs.get(id) * TAG_WEIGHT;
                 score += s;
-                note.append("[Tag: ").append(tagNames.get(id)).append(" +").append(String.format("%.1f", s)).append("] ");
+                note.append("[Tag: ").append(tagNames.get(id)).append("] ");
             }
         }
 
+        // 2. Genres (High)
         for (Integer id : fGenres) {
             if (genrePrefs.containsKey(id)) {
                 double s = genrePrefs.get(id) * GENRE_WEIGHT;
                 score += s;
-                note.append("[Genre: ").append(genreNames.get(id)).append(" +").append(String.format("%.1f", s)).append("] ");
+                note.append("[Genre: ").append(genreNames.get(id)).append("] ");
             }
         }
 
+        // 3. Directors (Medium)
         for (Integer id : fDirs) {
             if (dirPrefs.containsKey(id)) {
                 double s = dirPrefs.get(id) * DIRECTOR_WEIGHT;
                 score += s;
-                note.append("[Dir: ").append(dirNames.get(id)).append(" +").append(String.format("%.1f", s)).append("] ");
+                note.append("[Dir: ").append(dirNames.get(id)).append("] ");
             }
         }
 
+        // 4. Actors (Low)
         for (Integer id : fActors) {
             if (actorPrefs.containsKey(id)) {
                 double s = actorPrefs.get(id) * ACTOR_WEIGHT;
                 score += s;
-                note.append("[Act: ").append(actorNames.get(id)).append(" +").append(String.format("%.1f", s)).append("] ");
+                note.append("[Act: ").append(actorNames.get(id)).append("] ");
             }
         }
 
