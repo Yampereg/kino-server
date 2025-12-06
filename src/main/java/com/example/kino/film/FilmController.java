@@ -40,6 +40,11 @@ public class FilmController {
                 .orElseThrow(() -> new RuntimeException("Film not found"));
     }
 
+    @GetMapping("/popular")
+    public List<Film> getPopularFilms() {
+        return filmRepository.findTop10ByOrderByPopularityDesc();
+    }
+
     @GetMapping("/recommendations")
     public ResponseEntity<List<Film>> getRecommendations(@RequestHeader("Authorization") String authHeader) {
         User user = extractUserFromToken(authHeader);
@@ -52,7 +57,7 @@ public class FilmController {
         System.out.println("Auth header received: " + authHeader);
 
         User user = extractUserFromToken(authHeader);
-        System.out.println("User extracted: " + user); // or user.getId(), user.getUsername()
+        System.out.println("User extracted: " + user);
 
         List<Film> nextFilms = filmService.getRecommendations(user, 3);
         return ResponseEntity.ok(nextFilms);
