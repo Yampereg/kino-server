@@ -6,6 +6,8 @@ import com.example.kino.director.DirectorPreferenceRepository;
 import com.example.kino.genre.GenrePreferenceRepository;
 import com.example.kino.tag.TagPreferenceRepository;
 import com.example.kino.user.User;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -24,95 +26,94 @@ public class FilmService {
     private final DirectorPreferenceRepository directorPrefRepo;
     private final FilmRelationsFetcher relationsFetcher;
 
+    private static final double TAG_WEIGHT = 10.0;
+    private static final double GENRE_WEIGHT = 5.0;
+    private static final double DIRECTOR_WEIGHT = 2.0;
+    private static final double ACTOR_WEIGHT = 0.5;
+
     public List<Film> getRecommendations(User user, int count) {
         try {
-            // 1. Load User Preferences
-            Map<Integer, Double> genrePrefs = getUserPreferences(genrePrefRepo.findByUser(user), p -> p.getGenre().getId(), p -> p.getAffinityscore());
-            Map<Integer, Double> tagPrefs = getUserPreferences(tagPrefRepo.findByUser(user), p -> p.getTag().getId(), p -> p.getAffinityscore());
-            Map<Integer, Double> actorPrefs = getUserPreferences(actorPrefRepo.findByUser(user), p -> p.getActor().getId(), p -> p.getAffinityscore());
-            Map<Integer, Double> directorPrefs = getUserPreferences(directorPrefRepo.findByUser(user), p -> p.getDirector().getId(), p -> p.getAffinityscore());
-
-            // If no data, return generic popular films
-            if (genrePrefs.isEmpty() && tagPrefs.isEmpty() && actorPrefs.isEmpty() && directorPrefs.isEmpty()) {
-                return filmRepository.findCandidatesPool(user, PageRequest.of(0, count));
-            }
-
-            // 2. Identify "Power Genres" (The user's top 3 genres)
-            Set<Integer> topGenreIds = genrePrefs.entrySet().stream()
-                    .sorted(Map.Entry.<Integer, Double>comparingByValue().reversed())
-                    .limit(3)
-                    .map(Map.Entry::getKey)
-                    .collect(Collectors.toSet());
-
-            // 3. Fetch Deep Candidate Pool (Top 1000 unseen films)
-            // We cast a wide net to ensure we catch niche films that fit preferences, even if they aren't in the top 100.
             List<Film> candidates = filmRepository.findCandidatesPool(user, PageRequest.of(0, 1000));
             Set<Integer> filmIds = candidates.stream().map(Film::getId).collect(Collectors.toSet());
 
-            // 4. Batch Fetch Relations
-            Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
-            Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
-            Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
-            Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
+            var userTags = tagPrefRepo.findByUser(user);
+            var userGenres = genrePrefRepo.findByUser(user);
+            var userDirectors = directorPrefRepo.findByUser(user);
+            var userActors = actorPrefRepo.findByUser(user);
 
-            // 5. Complex Scoring & Filtering
-            List<Film> rankedFilms = candidates.parallelStream()
-                    .map(film -> {
-                        double score = calculatePureContentScore(
-                                film, topGenreIds, 
-                                genrePrefs, tagPrefs, actorPrefs, directorPrefs,
-                                filmGenres, filmTags, filmActors, filmDirectors
-                        );
-                        return new AbstractMap.SimpleEntry<>(film, score);
-                    })
-                    // Strict Filter: Score must be > 1.0. This eliminates films with only weak/accidental associations.
-                    .filter(entry -> entry.getValue() > 1.0) 
-                    .sorted(Map.Entry.<Film, Double>comparingByValue().reversed())
+            Map<Integer, Double> tagScores = getScores(userTags, p -> p.getTag().getId(), p -> p.getAffinityscore());
+            Map<Integer, String> tagNames = getNames(userTags, p -> p.getTag().getId(), p -> p.getTag().getName());
+
+            Map<Integer, Double> genreScores = getScores(userGenres, p -> p.getGenre().getId(), p -> p.getAffinityscore());
+            Map<Integer, String> genreNames = getNames(userGenres, p -> p.getGenre().getId(), p -> p.getGenre().getName());
+
+            Map<Integer, Double> dirScores = getScores(userDirectors, p -> p.getDirector().getId(), p -> p.getAffinityscore());
+            Map<Integer, String> dirNames = getNames(userDirectors, p -> p.getDirector().getId(), p -> p.getDirector().getName());
+
+            Map<Integer, Double> actorScores = getScores(userActors, p -> p.getActor().getId(), p -> p.getAffinityscore());
+            Map<Integer, String> actorNames = getNames(userActors, p -> p.getActor().getId(), p -> p.getActor().getName());
+
+            Map<Integer, Set<Integer>> filmTags = relationsFetcher.fetchFilmTags(filmIds);
+            Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
+            Map<Integer, Set<Integer>> filmDirectors = relationsFetcher.fetchFilmDirectors(filmIds);
+            Map<Integer, Set<Integer>> filmActors = relationsFetcher.fetchFilmActors(filmIds);
+
+            List<ScoredFilm> rankedParams = candidates.parallelStream()
+                    .map(film -> calculateScore(
+                            film,
+                            tagScores, tagNames, filmTags.getOrDefault(film.getId(), Set.of()),
+                            genreScores, genreNames, filmGenres.getOrDefault(film.getId(), Set.of()),
+                            dirScores, dirNames, filmDirectors.getOrDefault(film.getId(), Set.of()),
+                            actorScores, actorNames, filmActors.getOrDefault(film.getId(), Set.of())
+                    ))
+                    .filter(sf -> sf.getScore() > 0)
+                    .sorted(Comparator.comparingDouble(ScoredFilm::getScore).reversed())
                     .limit(count)
-                    .map(Map.Entry::getKey)
                     .collect(Collectors.toList());
 
-            // 6. Fallback: If strict matching returned too few results, fill with popular unseen
-            if (rankedFilms.size() < count) {
-                fillWithFallback(rankedFilms, candidates, count);
+            System.out.println("----- RECOMMENDATION DEBUG LOG FOR USER " + user.getId() + " -----");
+            for (ScoredFilm sf : rankedParams) {
+                System.out.println("FILM: " + sf.getFilm().getTitle() + " | SCORE: " + String.format("%.2f", sf.getScore()));
+                System.out.println("   -> " + sf.getDebugNote());
             }
+            System.out.println("---------------------------------------------------------------");
 
-            return rankedFilms;
+            return rankedParams.stream()
+                    .map(ScoredFilm::getFilm)
+                    .collect(Collectors.toList());
 
         } catch (Exception e) {
             e.printStackTrace();
-            return filmRepository.findCandidatesPool(user, PageRequest.of(0, count));
+            return Collections.emptyList();
         }
     }
 
     public List<Film> getNextToSwipe(User user) {
         try {
-            // Fast Lane: Smaller pool, simplified logic
             List<Film> candidates = filmRepository.findCandidatesPool(user, PageRequest.of(0, 50));
             
-            // Just grab the absolute favorite genre
-            Integer favoriteGenreId = genrePrefRepo.findByUser(user).stream()
-                    .max(Comparator.comparingDouble(p -> p.getAffinityscore()))
-                    .map(p -> p.getGenre().getId())
-                    .orElse(null);
+            Map<Integer, Double> genrePrefs = getScores(genrePrefRepo.findByUser(user), p -> p.getGenre().getId(), p -> p.getAffinityscore());
 
-            if (favoriteGenreId == null) {
+            if (genrePrefs.isEmpty()) {
                 Collections.shuffle(candidates);
                 return candidates.stream().limit(3).collect(Collectors.toList());
             }
 
+            Integer favoriteGenreId = genrePrefs.entrySet().stream()
+                    .max(Map.Entry.comparingByValue())
+                    .map(Map.Entry::getKey)
+                    .orElse(null);
+
             Set<Integer> filmIds = candidates.stream().map(Film::getId).collect(Collectors.toSet());
             Map<Integer, Set<Integer>> filmGenres = relationsFetcher.fetchFilmGenres(filmIds);
 
-            // Sort: Films in favorite genre first, then by popularity
             return candidates.stream()
                     .sorted((f1, f2) -> {
                         boolean f1Match = filmGenres.getOrDefault(f1.getId(), Set.of()).contains(favoriteGenreId);
                         boolean f2Match = filmGenres.getOrDefault(f2.getId(), Set.of()).contains(favoriteGenreId);
-                        
                         if (f1Match && !f2Match) return -1;
                         if (!f1Match && f2Match) return 1;
-                        return 0; // Maintain original popularity order if both match or neither match
+                        return Double.compare(f2.getPopularity(), f1.getPopularity());
                     })
                     .limit(3)
                     .collect(Collectors.toList());
@@ -122,66 +123,66 @@ public class FilmService {
         }
     }
 
-    private double calculatePureContentScore(
+    private ScoredFilm calculateScore(
             Film film,
-            Set<Integer> topGenreIds,
-            Map<Integer, Double> genrePrefs,
-            Map<Integer, Double> tagPrefs,
-            Map<Integer, Double> actorPrefs,
-            Map<Integer, Double> directorPrefs,
-            Map<Integer, Set<Integer>> filmGenres,
-            Map<Integer, Set<Integer>> filmTags,
-            Map<Integer, Set<Integer>> filmActors,
-            Map<Integer, Set<Integer>> filmDirectors
+            Map<Integer, Double> tagPrefs, Map<Integer, String> tagNames, Set<Integer> fTags,
+            Map<Integer, Double> genrePrefs, Map<Integer, String> genreNames, Set<Integer> fGenres,
+            Map<Integer, Double> dirPrefs, Map<Integer, String> dirNames, Set<Integer> fDirs,
+            Map<Integer, Double> actorPrefs, Map<Integer, String> actorNames, Set<Integer> fActors
     ) {
-        int id = film.getId();
         double score = 0.0;
-        
-        // --- Weighted Sum Components ---
-        // Genre: High impact (Weight 3.0)
-        score += filmGenres.getOrDefault(id, Set.of()).stream()
-                .mapToDouble(gid -> genrePrefs.getOrDefault(gid, 0.0) * 3.0)
-                .sum();
+        StringBuilder note = new StringBuilder();
 
-        // Tags: Medium impact (Weight 2.0) - crucial for specific vibes (e.g., "Zombie")
-        score += filmTags.getOrDefault(id, Set.of()).stream()
-                .mapToDouble(tid -> tagPrefs.getOrDefault(tid, 0.0) * 2.0)
-                .sum();
-
-        // Directors: Medium-High impact (Weight 2.5) - Stylistic match
-        score += filmDirectors.getOrDefault(id, Set.of()).stream()
-                .mapToDouble(did -> directorPrefs.getOrDefault(did, 0.0) * 2.5)
-                .sum();
-
-        // Actors: Low impact (Weight 1.0) - Users often swipe for plot/genre, not just actors
-        score += filmActors.getOrDefault(id, Set.of()).stream()
-                .mapToDouble(aid -> actorPrefs.getOrDefault(aid, 0.0))
-                .sum();
-
-        // --- Synergy Multiplier ---
-        // If the film belongs to one of the user's TOP 3 genres, boost the total score by 20%
-        // This ensures a "Zombie" tag in a "Horror" movie counts more than a "Zombie" tag in a "Comedy"
-        boolean isPowerGenre = filmGenres.getOrDefault(id, Set.of()).stream().anyMatch(topGenreIds::contains);
-        if (isPowerGenre) {
-            score *= 1.2;
-        }
-
-        return score;
-    }
-
-    private void fillWithFallback(List<Film> targetList, List<Film> sourceCandidates, int required) {
-        Set<Integer> existingIds = targetList.stream().map(Film::getId).collect(Collectors.toSet());
-        for (Film f : sourceCandidates) {
-            if (targetList.size() >= required) break;
-            if (!existingIds.contains(f.getId())) {
-                targetList.add(f);
-                existingIds.add(f.getId());
+        for (Integer id : fTags) {
+            if (tagPrefs.containsKey(id)) {
+                double s = tagPrefs.get(id) * TAG_WEIGHT;
+                score += s;
+                note.append("[Tag: ").append(tagNames.get(id)).append(" +").append(String.format("%.1f", s)).append("] ");
             }
         }
+
+        for (Integer id : fGenres) {
+            if (genrePrefs.containsKey(id)) {
+                double s = genrePrefs.get(id) * GENRE_WEIGHT;
+                score += s;
+                note.append("[Genre: ").append(genreNames.get(id)).append(" +").append(String.format("%.1f", s)).append("] ");
+            }
+        }
+
+        for (Integer id : fDirs) {
+            if (dirPrefs.containsKey(id)) {
+                double s = dirPrefs.get(id) * DIRECTOR_WEIGHT;
+                score += s;
+                note.append("[Dir: ").append(dirNames.get(id)).append(" +").append(String.format("%.1f", s)).append("] ");
+            }
+        }
+
+        for (Integer id : fActors) {
+            if (actorPrefs.containsKey(id)) {
+                double s = actorPrefs.get(id) * ACTOR_WEIGHT;
+                score += s;
+                note.append("[Act: ").append(actorNames.get(id)).append(" +").append(String.format("%.1f", s)).append("] ");
+            }
+        }
+
+        return new ScoredFilm(film, score, note.toString());
     }
 
-    private <T> Map<Integer, Double> getUserPreferences(List<T> preferences, java.util.function.Function<T, Integer> idMapper, java.util.function.Function<T, Double> scoreMapper) {
-        if (preferences == null) return Collections.emptyMap();
-        return preferences.stream().collect(Collectors.toMap(idMapper, scoreMapper, (a, b) -> b));
+    private <T> Map<Integer, Double> getScores(List<T> list, java.util.function.Function<T, Integer> idMapper, java.util.function.Function<T, Double> valMapper) {
+        if (list == null) return Collections.emptyMap();
+        return list.stream().collect(Collectors.toMap(idMapper, valMapper, (a, b) -> b));
+    }
+
+    private <T> Map<Integer, String> getNames(List<T> list, java.util.function.Function<T, Integer> idMapper, java.util.function.Function<T, String> nameMapper) {
+        if (list == null) return Collections.emptyMap();
+        return list.stream().collect(Collectors.toMap(idMapper, nameMapper, (a, b) -> b));
+    }
+
+    @Data
+    @AllArgsConstructor
+    private static class ScoredFilm {
+        private Film film;
+        private double score;
+        private String debugNote;
     }
 }
