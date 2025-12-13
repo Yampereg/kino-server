@@ -1,4 +1,3 @@
-// File: src/main/java/com/example/kino/interaction/FilmInteractionService.java
 package com.example.kino.interaction;
 
 import com.example.kino.actor.Actor;
@@ -45,6 +44,18 @@ public class FilmInteractionService {
     @Transactional
     public void superlikeFilm(User user, Integer filmId) {
         processFilm(user, filmId, 2, true);
+    }
+
+    public List<Film> getLikedFilms(User user) {
+        return interactionRepository.findAllByUserAndLiked(user, true).stream()
+                .map(UserFilmInteraction::getFilm)
+                .toList();
+    }
+
+    public List<Film> getDislikedFilms(User user) {
+        return interactionRepository.findAllByUserAndLiked(user, false).stream()
+                .map(UserFilmInteraction::getFilm)
+                .toList();
     }
 
     private void processFilm(User user, Integer filmId, int affinityChange, boolean positiveInteraction) {

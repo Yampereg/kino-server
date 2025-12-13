@@ -1,11 +1,14 @@
 package com.example.kino.interaction;
 
 import com.example.kino.auth.JwtService;
+import com.example.kino.film.Film;
 import com.example.kino.user.User;
 import com.example.kino.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/interaction")
@@ -40,5 +43,19 @@ public class FilmInteractionController {
         User user = extractUserFromToken(authHeader);
         filmInteractionService.dislikeFilm(user, filmId);
         return ResponseEntity.ok("Disliked");
+    }
+
+    @GetMapping("/liked")
+    public ResponseEntity<List<Film>> getLikedFilms(@RequestHeader("Authorization") String authHeader) {
+        User user = extractUserFromToken(authHeader);
+        List<Film> likedFilms = filmInteractionService.getLikedFilms(user);
+        return ResponseEntity.ok(likedFilms);
+    }
+
+    @GetMapping("/disliked")
+    public ResponseEntity<List<Film>> getDislikedFilms(@RequestHeader("Authorization") String authHeader) {
+        User user = extractUserFromToken(authHeader);
+        List<Film> dislikedFilms = filmInteractionService.getDislikedFilms(user);
+        return ResponseEntity.ok(dislikedFilms);
     }
 }

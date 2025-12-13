@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface UserFilmInteractionRepository extends JpaRepository<UserFilmInteraction, UserFilmInteractionKey> {
     List<UserFilmInteraction> findAllByUser(User user);
+    List<UserFilmInteraction> findAllByUserAndLiked(User user, Boolean liked);
 }
