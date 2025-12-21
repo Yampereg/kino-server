@@ -3,7 +3,9 @@ spring:
     url: jdbc:postgresql://postgres.railway.internal:5432/railway?sslmode=require
     username: postgres
     password: cpnMnYwuAmMYtjWyOpQqsIndvGtzSFDk
-
+    hikari:
+        maximum-pool-size: 100
+        
   jpa:
     show-sql: false               # Turn off Hibernate SQL logging
     properties:
